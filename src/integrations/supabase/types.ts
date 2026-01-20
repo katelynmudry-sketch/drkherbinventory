@@ -14,7 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      herbs: {
+        Row: {
+          common_name: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          common_name?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          common_name?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      inventory: {
+        Row: {
+          created_at: string
+          herb_id: string
+          id: string
+          location: string
+          notes: string | null
+          quantity: number
+          status: string
+          tincture_ready_at: string | null
+          tincture_started_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          herb_id: string
+          id?: string
+          location: string
+          notes?: string | null
+          quantity?: number
+          status?: string
+          tincture_ready_at?: string | null
+          tincture_started_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          herb_id?: string
+          id?: string
+          location?: string
+          notes?: string | null
+          quantity?: number
+          status?: string
+          tincture_ready_at?: string | null
+          tincture_started_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_herb_id_fkey"
+            columns: ["herb_id"]
+            isOneToOne: false
+            referencedRelation: "herbs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
