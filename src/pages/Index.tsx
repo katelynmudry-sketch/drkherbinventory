@@ -1,6 +1,7 @@
 import { Package, Droplets, Stethoscope, LogOut, Leaf } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VoiceQuery } from '@/components/VoiceQuery';
+import { VoiceHerbAdd } from '@/components/VoiceHerbAdd';
 import { InventorySection } from '@/components/InventorySection';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { AuthForm } from '@/components/AuthForm';
@@ -49,10 +50,13 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Voice Query Section */}
+        {/* Voice Section */}
         <section>
-          <h2 className="mb-3 text-lg font-semibold">Voice Search</h2>
-          <VoiceQuery />
+          <h2 className="mb-3 text-lg font-semibold">Voice Controls</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <VoiceQuery />
+            <VoiceHerbAdd />
+          </div>
         </section>
 
         {/* Inventory Grid */}
