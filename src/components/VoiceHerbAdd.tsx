@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Mic, MicOff, Plus, Volume2, Check, X } from 'lucide-react';
+import { Mic, MicOff, Plus, Volume2, Check, X, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,8 @@ export function VoiceHerbAdd() {
   const [lastTranscript, setLastTranscript] = useState('');
   const [parsedCommand, setParsedCommand] = useState<ParsedCommand | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   // Parse transcript when voice input stops
   useEffect(() => {
@@ -149,6 +152,35 @@ export function VoiceHerbAdd() {
     setParsedCommand(null);
     resetTranscript();
     setLastTranscript('');
+    setEditingIndex(null);
+  };
+
+  const handleEditHerb = (index: number) => {
+    if (parsedCommand) {
+      setEditingIndex(index);
+      setEditValue(parsedCommand.herbNames[index]);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (parsedCommand && editingIndex !== null && editValue.trim()) {
+      const newHerbNames = [...parsedCommand.herbNames];
+      newHerbNames[editingIndex] = editValue.trim().charAt(0).toUpperCase() + editValue.trim().slice(1);
+      setParsedCommand({ ...parsedCommand, herbNames: newHerbNames });
+    }
+    setEditingIndex(null);
+    setEditValue('');
+  };
+
+  const handleRemoveHerb = (index: number) => {
+    if (parsedCommand) {
+      const newHerbNames = parsedCommand.herbNames.filter((_, i) => i !== index);
+      if (newHerbNames.length === 0) {
+        handleCancel();
+      } else {
+        setParsedCommand({ ...parsedCommand, herbNames: newHerbNames });
+      }
+    }
   };
 
   const speakResponse = (text: string) => {
@@ -230,13 +262,50 @@ export function VoiceHerbAdd() {
               </Badge>
             </div>
             
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-2">
               {parsedCommand.herbNames.map((name, i) => (
-                <Badge key={i} variant="outline" className="bg-primary/10">
-                  🌿 {name}
-                </Badge>
+                editingIndex === i ? (
+                  <div key={i} className="flex items-center gap-1">
+                    <Input
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit();
+                        if (e.key === 'Escape') setEditingIndex(null);
+                      }}
+                      className="h-7 w-32 text-sm"
+                      autoFocus
+                    />
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleSaveEdit}>
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingIndex(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge 
+                    key={i} 
+                    variant="outline" 
+                    className="bg-primary/10 cursor-pointer hover:bg-primary/20 transition-colors group pr-1"
+                    onClick={() => handleEditHerb(i)}
+                  >
+                    🌿 {name}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveHerb(i);
+                      }}
+                      className="ml-1 opacity-50 group-hover:opacity-100 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )
               ))}
             </div>
+            
+            <p className="text-xs text-muted-foreground">Tap a herb to edit, ✕ to remove</p>
             
             <div className="flex gap-2 pt-2">
               <Button 
