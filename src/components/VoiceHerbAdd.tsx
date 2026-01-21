@@ -36,14 +36,14 @@ export function VoiceHerbAdd() {
   const parseVoiceCommand = (command: string): ParsedCommand => {
     const text = command.toLowerCase();
     
-    // Detect location
-    let location: InventoryLocation | null = null;
+    // Detect explicit location keywords
+    let explicitLocation: InventoryLocation | null = null;
     if (text.includes('backstock') || text.includes('back stock')) {
-      location = 'backstock';
+      explicitLocation = 'backstock';
     } else if (text.includes('tincture')) {
-      location = 'tincture';
+      explicitLocation = 'tincture';
     } else if (text.includes('clinic')) {
-      location = 'clinic';
+      explicitLocation = 'clinic';
     }
     
     // Detect status
@@ -54,6 +54,12 @@ export function VoiceHerbAdd() {
       status = 'low';
     } else if (text.includes('out') || text.includes('empty')) {
       status = 'out';
+    }
+    
+    // Determine location: if no explicit location, "low" and "out" default to clinic
+    let location: InventoryLocation | null = explicitLocation;
+    if (!explicitLocation && (status === 'low' || status === 'out')) {
+      location = 'clinic';
     }
     
     // Extract herb names - remove command words and split by commas or "and"
