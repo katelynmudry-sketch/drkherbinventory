@@ -203,3 +203,35 @@ export function useSearchInventory() {
     },
   });
 }
+
+export function useRemoveInventoryByHerbName() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ herbName, location }: { herbName: string; location: InventoryLocation }) => {
+      // First find the inventory item by herb name and location
+      const { data: inventoryItems, error: findError } = await supabase
+        .from('inventory')
+        .select('id, herbs!inner(name)')
+        .eq('location', location)
+        .ilike('herbs.name', herbName);
+      
+      if (findError) throw findError;
+      if (!inventoryItems || inventoryItems.length === 0) {
+        throw new Error(`${herbName} not found in ${location}`);
+      }
+      
+      // Delete the inventory item
+      const { error: deleteError } = await supabase
+        .from('inventory')
+        .delete()
+        .eq('id', inventoryItems[0].id);
+      
+      if (deleteError) throw deleteError;
+      return { herbName, location };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
