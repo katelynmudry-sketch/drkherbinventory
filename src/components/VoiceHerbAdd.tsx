@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mic, MicOff, Plus, Volume2, Check, X, Pencil } from 'lucide-react';
+import { Mic, MicOff, Plus, Volume2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { correctHerbName, getHerbSuggestions } from '@/lib/herbCorrection';
 
 interface ParsedCommand {
   location: InventoryLocation | null;
@@ -26,6 +27,7 @@ export function VoiceHerbAdd() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Parse transcript when voice input stops
   useEffect(() => {
@@ -75,7 +77,7 @@ export function VoiceHerbAdd() {
       .split(/,|and|\s{2,}/)
       .map(name => name.trim())
       .filter(name => name.length > 1)
-      .map(name => name.charAt(0).toUpperCase() + name.slice(1)); // Capitalize
+      .map(name => correctHerbName(name)); // Apply smart correction
     
     return { location, status, herbNames };
   };
@@ -265,23 +267,44 @@ export function VoiceHerbAdd() {
             <div className="flex flex-wrap gap-2">
               {parsedCommand.herbNames.map((name, i) => (
                 editingIndex === i ? (
-                  <div key={i} className="flex items-center gap-1">
-                    <Input
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveEdit();
-                        if (e.key === 'Escape') setEditingIndex(null);
-                      }}
-                      className="h-7 w-32 text-sm"
-                      autoFocus
-                    />
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleSaveEdit}>
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingIndex(null)}>
-                      <X className="h-3 w-3" />
-                    </Button>
+                  <div key={i} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={editValue}
+                        onChange={(e) => {
+                          setEditValue(e.target.value);
+                          setSuggestions(getHerbSuggestions(e.target.value));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { handleSaveEdit(); setSuggestions([]); }
+                          if (e.key === 'Escape') { setEditingIndex(null); setSuggestions([]); }
+                        }}
+                        className="h-7 w-32 text-sm"
+                        autoFocus
+                      />
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { handleSaveEdit(); setSuggestions([]); }}>
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingIndex(null); setSuggestions([]); }}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {suggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {suggestions.map((s) => (
+                          <button
+                            key={s}
+                            className="text-xs px-2 py-0.5 rounded bg-secondary hover:bg-primary/20 transition-colors"
+                            onClick={() => {
+                              setEditValue(s);
+                              setSuggestions([]);
+                            }}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Badge 
