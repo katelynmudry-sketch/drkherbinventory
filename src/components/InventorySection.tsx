@@ -29,9 +29,10 @@ interface InventorySectionProps {
   title: string;
   icon: React.ReactNode;
   description: string;
+  searchQuery?: string;
 }
 
-export function InventorySection({ location, title, icon, description }: InventorySectionProps) {
+export function InventorySection({ location, title, icon, description, searchQuery = '' }: InventorySectionProps) {
   const { data: inventory = [], isLoading } = useInventory(location);
   const { data: herbs = [] } = useHerbs();
   const addInventory = useAddInventory();
@@ -68,6 +69,22 @@ export function InventorySection({ location, title, icon, description }: Invento
   // Filter out herbs that are already in this location
   const existingHerbIds = inventory.map(item => item.herb_id);
   const availableHerbs = herbs.filter(herb => !existingHerbIds.includes(herb.id));
+
+  // Filter by search query and sort alphabetically
+  const filteredInventory = inventory
+    .filter(item => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        item.herbs?.name?.toLowerCase().includes(query) ||
+        item.herbs?.common_name?.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      const nameA = a.herbs?.name?.toLowerCase() || '';
+      const nameB = b.herbs?.name?.toLowerCase() || '';
+      return nameA.localeCompare(nameB);
+    });
 
   return (
     <Card className="h-full">
@@ -116,13 +133,15 @@ export function InventorySection({ location, title, icon, description }: Invento
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-2 max-h-96 overflow-y-auto">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : inventory.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No items yet</p>
+        ) : filteredInventory.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            {searchQuery ? 'No matching herbs' : 'No items yet'}
+          </p>
         ) : (
-          inventory.map((item) => (
+          filteredInventory.map((item) => (
             <InventoryItemRow
               key={item.id}
               item={item}
