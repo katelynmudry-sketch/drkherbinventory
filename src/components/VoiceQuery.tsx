@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useSearchInventory, InventoryItem } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
+import { correctHerbName } from '@/lib/herbCorrection';
 
 interface VoiceQueryProps {
   onResult?: (items: InventoryItem[]) => void;
@@ -37,7 +38,9 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
       return;
     }
 
-    const searchTerm = herbKeywords.join(' ');
+    // Apply smart herb name correction
+    const rawTerm = herbKeywords.join(' ');
+    const searchTerm = correctHerbName(rawTerm);
     
     try {
       const results = await searchInventory.mutateAsync(searchTerm);
