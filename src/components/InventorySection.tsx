@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Droplets, Clock } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Droplets, Clock, Filter } from 'lucide-react';
+import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,7 +44,10 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [selectedHerbId, setSelectedHerbId] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
+  const [showOutOnly, setShowOutOnly] = useState(false);
 
+  // Status priority for sorting (out first, then low, then full)
+  const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
   const handleAdd = async () => {
     if (!selectedHerbId) return;
     
@@ -70,21 +74,37 @@ export function InventorySection({ location, title, icon, description, searchQue
   const existingHerbIds = inventory.map(item => item.herb_id);
   const availableHerbs = herbs.filter(herb => !existingHerbIds.includes(herb.id));
 
-  // Filter by search query and sort alphabetically
+  // Filter by search query and status filter, then sort by priority (for clinic) or alphabetically
   const filteredInventory = inventory
     .filter(item => {
-      if (!searchQuery) return true;
-      const query = searchQuery.toLowerCase();
-      return (
-        item.herbs?.name?.toLowerCase().includes(query) ||
-        item.herbs?.common_name?.toLowerCase().includes(query)
-      );
+      // Apply search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          item.herbs?.name?.toLowerCase().includes(query) ||
+          item.herbs?.common_name?.toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
+      // Apply "out only" filter for clinic
+      if (location === 'clinic' && showOutOnly && item.status !== 'out') {
+        return false;
+      }
+      return true;
     })
     .sort((a, b) => {
+      // For clinic, sort by status priority first (out → low → full), then alphabetically
+      if (location === 'clinic') {
+        const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+        if (priorityDiff !== 0) return priorityDiff;
+      }
+      // Then sort alphabetically
       const nameA = a.herbs?.name?.toLowerCase() || '';
       const nameB = b.herbs?.name?.toLowerCase() || '';
       return nameA.localeCompare(nameB);
     });
+
+  // Count of "out" items for the filter badge
+  const outCount = inventory.filter(item => item.status === 'out').length;
 
   return (
     <Card className="h-full">
@@ -97,40 +117,55 @@ export function InventorySection({ location, title, icon, description, searchQue
               <p className="text-xs text-muted-foreground">{description}</p>
             </div>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add to {title}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <Select value={selectedHerbId} onValueChange={setSelectedHerbId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an herb" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableHerbs.map((herb) => (
-                      <SelectItem key={herb.id} value={herb.id}>
-                        {herb.name}
-                        {herb.common_name && ` (${herb.common_name})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  className="w-full"
-                  onClick={handleAdd}
-                  disabled={!selectedHerbId || addInventory.isPending}
-                >
-                  {addInventory.isPending ? 'Adding...' : 'Add to Inventory'}
+          <div className="flex items-center gap-1">
+            {location === 'clinic' && (
+              <Toggle
+                pressed={showOutOnly}
+                onPressedChange={setShowOutOnly}
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 data-[state=on]:bg-red-500/20 data-[state=on]:text-red-700 dark:data-[state=on]:text-red-400"
+                title="Show only out-of-stock items"
+              >
+                <Filter className="h-3 w-3" />
+                <span className="text-xs">Out{outCount > 0 && ` (${outCount})`}</span>
+              </Toggle>
+            )}
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 w-8 p-0">
+                  <Plus className="h-4 w-4" />
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add to {title}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <Select value={selectedHerbId} onValueChange={setSelectedHerbId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an herb" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableHerbs.map((herb) => (
+                        <SelectItem key={herb.id} value={herb.id}>
+                          {herb.name}
+                          {herb.common_name && ` (${herb.common_name})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    className="w-full"
+                    onClick={handleAdd}
+                    disabled={!selectedHerbId || addInventory.isPending}
+                  >
+                    {addInventory.isPending ? 'Adding...' : 'Add to Inventory'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-2 max-h-96 overflow-y-auto">
