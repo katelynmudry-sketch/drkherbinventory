@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X, Droplets, Clock, Filter } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,8 @@ import {
   InventoryStatus,
   InventoryItem,
 } from '@/hooks/useInventory';
+import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
+import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, isPast } from 'date-fns';
 
@@ -42,23 +44,57 @@ export function InventorySection({ location, title, icon, description, searchQue
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('full');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
   const [showOutOnly, setShowOutOnly] = useState(false);
+  const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
+
+  // Check availability when herb selection or status changes (for clinic low/out)
+  useEffect(() => {
+    const checkAvail = async () => {
+      if (location === 'clinic' && selectedHerbId && (selectedStatus === 'low' || selectedStatus === 'out')) {
+        setIsCheckingAvailability(true);
+        try {
+          const result = await checkHerbAvailability(selectedHerbId, 'clinic');
+          setAvailability(result);
+        } catch (error) {
+          console.error('Error checking availability:', error);
+          setAvailability([]);
+        }
+        setIsCheckingAvailability(false);
+      } else {
+        setAvailability([]);
+      }
+    };
+    checkAvail();
+  }, [selectedHerbId, selectedStatus, location]);
   const handleAdd = async () => {
     if (!selectedHerbId) return;
     
     await addInventory.mutateAsync({
       herb_id: selectedHerbId,
       location,
-      status: 'full',
+      status: location === 'clinic' ? selectedStatus : 'full',
     });
     
     setSelectedHerbId('');
+    setSelectedStatus('full');
+    setAvailability([]);
     setIsAddDialogOpen(false);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setIsAddDialogOpen(open);
+    if (!open) {
+      setSelectedHerbId('');
+      setSelectedStatus('full');
+      setAvailability([]);
+    }
   };
 
   const handleUpdateStatus = async (id: string, status: InventoryStatus) => {
@@ -131,7 +167,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                 <span className="text-xs">Out{outCount > 0 && ` (${outCount})`}</span>
               </Toggle>
             )}
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <Dialog open={isAddDialogOpen} onOpenChange={handleDialogClose}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline" className="h-8 w-8 p-0">
                   <Plus className="h-4 w-4" />
@@ -155,10 +191,31 @@ export function InventorySection({ location, title, icon, description, searchQue
                       ))}
                     </SelectContent>
                   </Select>
+                  
+                  {location === 'clinic' && (
+                    <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as InventoryStatus)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Full</SelectItem>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="out">Out</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  
+                  {availability.length > 0 && selectedHerbId && (
+                    <AvailabilityAlert 
+                      herbName={herbs.find(h => h.id === selectedHerbId)?.name || 'This herb'} 
+                      availability={availability} 
+                    />
+                  )}
+                  
                   <Button
                     className="w-full"
                     onClick={handleAdd}
-                    disabled={!selectedHerbId || addInventory.isPending}
+                    disabled={!selectedHerbId || addInventory.isPending || isCheckingAvailability}
                   >
                     {addInventory.isPending ? 'Adding...' : 'Add to Inventory'}
                   </Button>

@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useAddHerb, useAddInventory, useHerbs, useRemoveInventoryByHerbName, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { checkHerbAvailabilityByName, AvailabilityInfo, formatAvailabilityMessage } from '@/hooks/useInventoryCheck';
+import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { correctHerbName, getHerbSuggestions } from '@/lib/herbCorrection';
@@ -32,6 +34,7 @@ export function VoiceHerbAdd() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [herbAvailability, setHerbAvailability] = useState<Record<string, AvailabilityInfo[]>>({});
 
   // Parse transcript when voice input stops
   useEffect(() => {
@@ -39,8 +42,50 @@ export function VoiceHerbAdd() {
       setLastTranscript(transcript);
       const parsed = parseVoiceCommand(transcript);
       setParsedCommand(parsed);
+      setHerbAvailability({});
     }
   }, [transcript, isListening, lastTranscript]);
+
+  // Check availability when adding to clinic as low/out
+  useEffect(() => {
+    const checkAvailability = async () => {
+      if (!parsedCommand) return;
+      if (parsedCommand.type !== 'add') return;
+      
+      const location = parsedCommand.location || 'backstock';
+      const status = parsedCommand.status || 'full';
+      
+      // Only check for clinic with low/out status
+      if (location !== 'clinic' || status === 'full') {
+        setHerbAvailability({});
+        return;
+      }
+      
+      const availability: Record<string, AvailabilityInfo[]> = {};
+      
+      for (const herbName of parsedCommand.herbNames) {
+        try {
+          const result = await checkHerbAvailabilityByName(herbName);
+          if (result.availability.length > 0) {
+            availability[herbName] = result.availability;
+          }
+        } catch (error) {
+          console.error(`Error checking availability for ${herbName}:`, error);
+        }
+      }
+      
+      setHerbAvailability(availability);
+      
+      // Speak alert if any herbs found elsewhere
+      if (Object.keys(availability).length > 0) {
+        const herbsFound = Object.keys(availability);
+        const message = `Note: ${herbsFound.join(', ')} ${herbsFound.length > 1 ? 'are' : 'is'} available in other locations`;
+        speakResponse(message);
+      }
+    };
+    
+    checkAvailability();
+  }, [parsedCommand]);
 
   const parseVoiceCommand = (command: string): ParsedCommand => {
     const text = command.toLowerCase();
@@ -188,6 +233,7 @@ export function VoiceHerbAdd() {
     resetTranscript();
     setLastTranscript('');
     setEditingIndex(null);
+    setHerbAvailability({});
   };
 
   const handleEditHerb = (index: number) => {
@@ -378,6 +424,15 @@ export function VoiceHerbAdd() {
             </div>
             
             <p className="text-xs text-muted-foreground">Tap a herb to edit, ✕ to remove from list</p>
+            
+            {/* Availability alerts for clinic low/out */}
+            {Object.keys(herbAvailability).length > 0 && (
+              <div className="space-y-2">
+                {Object.entries(herbAvailability).map(([herbName, availability]) => (
+                  <AvailabilityAlert key={herbName} herbName={herbName} availability={availability} />
+                ))}
+              </div>
+            )}
             
             <div className="flex gap-2 pt-2">
               <Button 
