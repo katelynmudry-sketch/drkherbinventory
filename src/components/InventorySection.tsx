@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2, CalendarIcon } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +28,7 @@ import {
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
-import { format, differenceInDays, isPast } from 'date-fns';
+import { format, differenceInDays, isPast, addWeeks } from 'date-fns';
 
 interface InventorySectionProps {
   location: InventoryLocation;
@@ -117,6 +119,14 @@ export function InventorySection({ location, title, icon, description, searchQue
     await updateInventory.mutateAsync({ 
       id, 
       tincture_ready_at: new Date().toISOString() 
+    });
+    setEditingId(null);
+  };
+
+  const handleUpdateTinctureDate = async (id: string, date: Date) => {
+    await updateInventory.mutateAsync({ 
+      id, 
+      tincture_ready_at: date.toISOString() 
     });
     setEditingId(null);
   };
@@ -270,6 +280,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               onHerbNameChange={setEditHerbName}
               onDelete={() => handleDelete(item.id)}
               onMarkDone={() => handleMarkTinctureDone(item.id)}
+              onUpdateReadyDate={(date) => handleUpdateTinctureDate(item.id, date)}
               location={location}
             />
           ))
@@ -291,6 +302,7 @@ interface InventoryItemRowProps {
   onHerbNameChange: (name: string) => void;
   onDelete: () => void;
   onMarkDone: () => void;
+  onUpdateReadyDate: (date: Date) => void;
   location: InventoryLocation;
 }
 
@@ -306,8 +318,10 @@ function InventoryItemRow({
   onHerbNameChange,
   onDelete,
   onMarkDone,
+  onUpdateReadyDate,
   location,
 }: InventoryItemRowProps) {
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const readyDate = item.tincture_ready_at ? new Date(item.tincture_ready_at) : null;
   const isReady = readyDate ? isPast(readyDate) : false;
   const daysLeft = readyDate ? differenceInDays(readyDate, new Date()) : null;
@@ -367,15 +381,46 @@ function InventoryItemRow({
               </Select>
             )}
             {location === 'tincture' && !isReady && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1 text-xs"
-                onClick={onMarkDone}
-              >
-                <CheckCircle2 className="h-3 w-3" />
-                Done
-              </Button>
+              <div className="flex items-center gap-1">
+                <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1 text-xs"
+                    >
+                      <CalendarIcon className="h-3 w-3" />
+                      Date
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                      mode="single"
+                      selected={readyDate || undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          onUpdateReadyDate(date);
+                          setDatePickerOpen(false);
+                        }
+                      }}
+                      disabled={(date) =>
+                        date < new Date() || date > addWeeks(new Date(), 4)
+                      }
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1 text-xs"
+                  onClick={onMarkDone}
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  Done
+                </Button>
+              </div>
             )}
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onSaveEdit}>
               <Check className="h-4 w-4 text-green-600" />
