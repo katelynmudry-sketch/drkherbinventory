@@ -18,6 +18,7 @@ import {
   useAddInventory,
   useUpdateInventory,
   useDeleteInventory,
+  useUpdateHerb,
   InventoryLocation,
   InventoryStatus,
   InventoryItem,
@@ -41,12 +42,14 @@ export function InventorySection({ location, title, icon, description, searchQue
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
+  const updateHerb = useUpdateHerb();
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('full');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
+  const [editHerbName, setEditHerbName] = useState('');
   const [showOutOnly, setShowOutOnly] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
@@ -97,8 +100,16 @@ export function InventorySection({ location, title, icon, description, searchQue
     }
   };
 
-  const handleUpdateStatus = async (id: string, status: InventoryStatus) => {
-    await updateInventory.mutateAsync({ id, status });
+  const handleUpdateStatus = async (id: string, status: InventoryStatus, herbId: string, newHerbName: string) => {
+    // Update herb name if changed
+    const currentHerb = herbs.find(h => h.id === herbId);
+    if (currentHerb && currentHerb.name !== newHerbName && newHerbName.trim()) {
+      await updateHerb.mutateAsync({ id: herbId, name: newHerbName.trim() });
+    }
+    // Only update status for non-tincture locations
+    if (location !== 'tincture') {
+      await updateInventory.mutateAsync({ id, status });
+    }
     setEditingId(null);
   };
 
@@ -107,6 +118,7 @@ export function InventorySection({ location, title, icon, description, searchQue
       id, 
       tincture_ready_at: new Date().toISOString() 
     });
+    setEditingId(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -246,13 +258,16 @@ export function InventorySection({ location, title, icon, description, searchQue
               item={item}
               isEditing={editingId === item.id}
               editStatus={editStatus}
+              editHerbName={editHerbName}
               onStartEdit={() => {
                 setEditingId(item.id);
                 setEditStatus(item.status);
+                setEditHerbName(item.herbs?.name || '');
               }}
               onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={() => handleUpdateStatus(item.id, editStatus)}
+              onSaveEdit={() => handleUpdateStatus(item.id, editStatus, item.herb_id, editHerbName)}
               onStatusChange={setEditStatus}
+              onHerbNameChange={setEditHerbName}
               onDelete={() => handleDelete(item.id)}
               onMarkDone={() => handleMarkTinctureDone(item.id)}
               location={location}
@@ -268,10 +283,12 @@ interface InventoryItemRowProps {
   item: InventoryItem;
   isEditing: boolean;
   editStatus: InventoryStatus;
+  editHerbName: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onStatusChange: (status: InventoryStatus) => void;
+  onHerbNameChange: (name: string) => void;
   onDelete: () => void;
   onMarkDone: () => void;
   location: InventoryLocation;
@@ -281,10 +298,12 @@ function InventoryItemRow({
   item,
   isEditing,
   editStatus,
+  editHerbName,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onStatusChange,
+  onHerbNameChange,
   onDelete,
   onMarkDone,
   location,
@@ -303,11 +322,22 @@ function InventoryItemRow({
       )}
     >
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{item.herbs?.name}</p>
-        {item.herbs?.common_name && (
-          <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
+        {isEditing ? (
+          <Input
+            value={editHerbName}
+            onChange={(e) => onHerbNameChange(e.target.value)}
+            className="h-8 text-sm font-medium"
+            placeholder="Herb name"
+          />
+        ) : (
+          <>
+            <p className="font-medium truncate">{item.herbs?.name}</p>
+            {item.herbs?.common_name && (
+              <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
+            )}
+          </>
         )}
-        {location === 'tincture' && readyDate && (
+        {location === 'tincture' && readyDate && !isEditing && (
           <div className="flex items-center gap-1 mt-1">
             <Clock className="h-3 w-3 text-muted-foreground" />
             <span className={cn(
@@ -316,16 +346,6 @@ function InventoryItemRow({
             )}>
               {isReady ? 'Ready!' : `${daysLeft} days left (${format(readyDate, 'MMM d')})`}
             </span>
-            {!isReady && (
-              <button
-                onClick={onMarkDone}
-                className="ml-2 flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
-                title="Mark as done"
-              >
-                <CheckCircle2 className="h-3 w-3" />
-                Done
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -333,16 +353,30 @@ function InventoryItemRow({
       <div className="flex items-center gap-2">
         {isEditing ? (
           <>
-            <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
-              <SelectTrigger className="w-24 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="full">Full</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="out">Out</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Show status dropdown only for clinic, show "Mark Done" for tinctures */}
+            {location === 'clinic' && (
+              <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
+                <SelectTrigger className="w-24 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="out">Out</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            {location === 'tincture' && !isReady && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 text-xs"
+                onClick={onMarkDone}
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                Done
+              </Button>
+            )}
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onSaveEdit}>
               <Check className="h-4 w-4 text-green-600" />
             </Button>
