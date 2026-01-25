@@ -116,6 +116,27 @@ export function useAddHerb() {
   });
 }
 
+export function useUpdateHerb() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; notes?: string }) => {
+      const { data, error } = await supabase
+        .from('herbs')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Herb;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['herbs'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
 export function useAddInventory() {
   const queryClient = useQueryClient();
   
