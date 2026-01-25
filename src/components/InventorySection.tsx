@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Droplets, Clock, Filter } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2 } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -100,6 +100,13 @@ export function InventorySection({ location, title, icon, description, searchQue
   const handleUpdateStatus = async (id: string, status: InventoryStatus) => {
     await updateInventory.mutateAsync({ id, status });
     setEditingId(null);
+  };
+
+  const handleMarkTinctureDone = async (id: string) => {
+    await updateInventory.mutateAsync({ 
+      id, 
+      tincture_ready_at: new Date().toISOString() 
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -247,6 +254,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               onSaveEdit={() => handleUpdateStatus(item.id, editStatus)}
               onStatusChange={setEditStatus}
               onDelete={() => handleDelete(item.id)}
+              onMarkDone={() => handleMarkTinctureDone(item.id)}
               location={location}
             />
           ))
@@ -265,6 +273,7 @@ interface InventoryItemRowProps {
   onSaveEdit: () => void;
   onStatusChange: (status: InventoryStatus) => void;
   onDelete: () => void;
+  onMarkDone: () => void;
   location: InventoryLocation;
 }
 
@@ -277,6 +286,7 @@ function InventoryItemRow({
   onSaveEdit,
   onStatusChange,
   onDelete,
+  onMarkDone,
   location,
 }: InventoryItemRowProps) {
   const readyDate = item.tincture_ready_at ? new Date(item.tincture_ready_at) : null;
@@ -306,6 +316,16 @@ function InventoryItemRow({
             )}>
               {isReady ? 'Ready!' : `${daysLeft} days left (${format(readyDate, 'MMM d')})`}
             </span>
+            {!isReady && (
+              <button
+                onClick={onMarkDone}
+                className="ml-2 flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                title="Mark as done"
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                Done
+              </button>
+            )}
           </div>
         )}
       </div>
