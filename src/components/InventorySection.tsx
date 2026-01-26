@@ -329,118 +329,124 @@ function InventoryItemRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between rounded-lg border p-3 transition-colors",
+        "rounded-lg border p-3 transition-colors",
         item.status === 'full' && "border-green-500/30 bg-green-500/5",
         item.status === 'low' && "border-yellow-500/30 bg-yellow-500/5",
         item.status === 'out' && "border-red-500/30 bg-red-500/5"
       )}
     >
-      <div className="flex-1 min-w-0">
-        {isEditing ? (
-          <Input
-            value={editHerbName}
-            onChange={(e) => onHerbNameChange(e.target.value)}
-            className="h-8 text-sm font-medium"
-            placeholder="Herb name"
-          />
-        ) : (
-          <>
-            <p className="font-medium truncate">{item.herbs?.name}</p>
-            {item.herbs?.common_name && (
-              <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
-            )}
-          </>
-        )}
-        {location === 'tincture' && readyDate && !isEditing && (
-          <div className="flex items-center gap-1 mt-1">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className={cn(
-              "text-xs",
-              isReady ? "text-green-600 dark:text-green-400 font-medium" : "text-muted-foreground"
-            )}>
-              {isReady ? 'Ready!' : `${daysLeft} days left (${format(readyDate, 'MMM d')})`}
-            </span>
-          </div>
-        )}
+      {/* Row 1: Name and action buttons */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <Input
+              value={editHerbName}
+              onChange={(e) => onHerbNameChange(e.target.value)}
+              className="h-8 text-sm font-medium"
+              placeholder="Herb name"
+            />
+          ) : (
+            <>
+              <p className="font-medium truncate">{item.herbs?.name}</p>
+              {item.herbs?.common_name && (
+                <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
+              )}
+            </>
+          )}
+          {location === 'tincture' && readyDate && !isEditing && (
+            <div className="flex items-center gap-1 mt-1">
+              <Clock className="h-3 w-3 text-muted-foreground" />
+              <span className={cn(
+                "text-xs",
+                isReady ? "text-green-600 dark:text-green-400 font-medium" : "text-muted-foreground"
+              )}>
+                {isReady ? 'Ready!' : `${daysLeft} days left (${format(readyDate, 'MMM d')})`}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {isEditing ? (
+            <>
+              {/* Show status dropdown only for clinic */}
+              {location === 'clinic' && (
+                <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
+                  <SelectTrigger className="w-24 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">Full</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="out">Out</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onSaveEdit}>
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onCancelEdit}>
+                <X className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <StatusBadge status={item.status} />
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onStartEdit}>
+                <Edit2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onDelete}>
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        {isEditing ? (
-          <>
-            {/* Show status dropdown only for clinic, show "Mark Done" for tinctures */}
-            {location === 'clinic' && (
-              <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
-                <SelectTrigger className="w-24 h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="full">Full</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="out">Out</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            {location === 'tincture' && !isReady && (
-              <div className="flex items-center gap-1">
-                <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 gap-1 text-xs"
-                    >
-                      <CalendarIcon className="h-3 w-3" />
-                      Date
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <Calendar
-                      mode="single"
-                      selected={readyDate || undefined}
-                      onSelect={(date) => {
-                        if (date) {
-                          onUpdateReadyDate(date);
-                          setDatePickerOpen(false);
-                        }
-                      }}
-                      disabled={(date) =>
-                        date < new Date() || date > addWeeks(new Date(), 4)
-                      }
-                      initialFocus
-                      className="p-3 pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1 text-xs"
-                  onClick={onMarkDone}
-                >
-                  <CheckCircle2 className="h-3 w-3" />
-                  Done
-                </Button>
-              </div>
-            )}
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onSaveEdit}>
-              <Check className="h-4 w-4 text-green-600" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onCancelEdit}>
-              <X className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </>
-        ) : (
-          <>
-            <StatusBadge status={item.status} />
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onStartEdit}>
-              <Edit2 className="h-4 w-4 text-muted-foreground" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onDelete}>
-              <Trash2 className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </>
-        )}
-      </div>
+      {/* Row 2: Tincture date/done controls (only when editing tinctures) */}
+      {isEditing && location === 'tincture' && (
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
+          <span className="text-xs text-muted-foreground">Ready date:</span>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 text-xs"
+              >
+                <CalendarIcon className="h-3 w-3" />
+                {readyDate ? format(readyDate, 'MMM d') : 'Pick date'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={readyDate || undefined}
+                onSelect={(date) => {
+                  if (date) {
+                    onUpdateReadyDate(date);
+                    setDatePickerOpen(false);
+                  }
+                }}
+                disabled={(date) =>
+                  date < new Date() || date > addWeeks(new Date(), 4)
+                }
+                initialFocus
+                className="p-3 pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          <Button
+            size="sm"
+            variant={isReady ? "secondary" : "outline"}
+            className={cn("h-8 gap-1 text-xs", isReady && "bg-green-500/20 text-green-700 dark:text-green-400")}
+            onClick={onMarkDone}
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            {isReady ? 'Ready' : 'Mark Done'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
