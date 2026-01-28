@@ -5,14 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
-import { useAddHerb, useAddInventory, useHerbs, useRemoveInventoryByHerbName, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useAddHerb, useAddInventory, useHerbs, useRemoveInventoryByHerbName, useUpdateInventoryByHerbName, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { checkHerbAvailabilityByName, AvailabilityInfo, formatAvailabilityMessage } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { correctHerbName, getHerbSuggestions } from '@/lib/herbCorrection';
 
-type CommandType = 'add' | 'remove';
+type CommandType = 'add' | 'remove' | 'change';
 
 interface ParsedCommand {
   type: CommandType;
@@ -27,6 +27,7 @@ export function VoiceHerbAdd() {
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
   const removeInventory = useRemoveInventoryByHerbName();
+  const updateInventory = useUpdateInventoryByHerbName();
   
   const [lastTranscript, setLastTranscript] = useState('');
   const [parsedCommand, setParsedCommand] = useState<ParsedCommand | null>(null);
@@ -90,10 +91,12 @@ export function VoiceHerbAdd() {
   const parseVoiceCommand = (command: string): ParsedCommand => {
     const text = command.toLowerCase();
     
-    // Detect command type (add or remove)
+    // Detect command type (add, remove, or change)
     let type: CommandType = 'add';
     if (text.includes('remove') || text.includes('delete') || text.includes('take out')) {
       type = 'remove';
+    } else if (text.includes('change') || text.includes('set') || text.includes('mark') || text.includes('update')) {
+      type = 'change';
     }
     
     // Detect explicit location keywords
@@ -106,7 +109,7 @@ export function VoiceHerbAdd() {
       explicitLocation = 'clinic';
     }
     
-    // Detect status (only relevant for add commands)
+    // Detect status (relevant for add and change commands)
     let status: InventoryStatus | null = null;
     if (text.includes('full')) {
       status = 'full';
@@ -117,6 +120,7 @@ export function VoiceHerbAdd() {
     }
     
     // Determine location: if no explicit location, "low" and "out" default to clinic
+    // For change commands with tincture, default to tincture location
     let location: InventoryLocation | null = explicitLocation;
     if (!explicitLocation && (status === 'low' || status === 'out')) {
       location = 'clinic';
@@ -124,7 +128,7 @@ export function VoiceHerbAdd() {
     
     // Extract herb names - remove command words and split by commas or "and"
     const cleanedText = text
-      .replace(/add to|add|remove from|remove|delete from|delete|take out of|take out|put in|put|backstock|back stock|tincture|clinic|full|low|out|empty|stock|status/gi, '')
+      .replace(/add to|add|remove from|remove|delete from|delete|take out of|take out|put in|put|change|set|mark|update|to|from|as|backstock|back stock|tincture|clinic|full|low|out|empty|stock|status/gi, '')
       .trim();
     
     // Split by comma, "and", or multiple spaces
@@ -177,6 +181,26 @@ export function VoiceHerbAdd() {
       
       if (successCount > 0) {
         const message = `Removed ${successCount} herb${successCount > 1 ? 's' : ''} from ${location}`;
+        toast.success(message);
+        speakResponse(message);
+      }
+    } else if (parsedCommand.type === 'change') {
+      // Handle change/update status command
+      for (const herbName of parsedCommand.herbNames) {
+        try {
+          await updateInventory.mutateAsync({ herbName, location, status });
+          successCount++;
+        } catch (error: any) {
+          console.error(`Failed to update ${herbName}:`, error);
+          toast.error(error.message || `Failed to update ${herbName}`);
+          errorCount++;
+        }
+      }
+
+      setIsProcessing(false);
+      
+      if (successCount > 0) {
+        const message = `Changed ${successCount} herb${successCount > 1 ? 's' : ''} in ${location} to ${status}`;
         toast.success(message);
         speakResponse(message);
       }
@@ -289,6 +313,8 @@ export function VoiceHerbAdd() {
         <CardTitle className="text-base flex items-center gap-2">
           {parsedCommand?.type === 'remove' ? (
             <Trash2 className="h-4 w-4" />
+          ) : parsedCommand?.type === 'change' ? (
+            <Volume2 className="h-4 w-4" />
           ) : (
             <Plus className="h-4 w-4" />
           )}
@@ -322,7 +348,7 @@ export function VoiceHerbAdd() {
               "Add to backstock low Yarrow, Nettle"
             </span>
             <span className="block italic">
-              "Remove from clinic Damiana, Valerian"
+              "Change tincture Damiana to out"
             </span>
           </p>
         </div>
@@ -338,9 +364,9 @@ export function VoiceHerbAdd() {
           <div className="space-y-3 border rounded-lg p-3 bg-background">
             <div className="flex items-center gap-2">
               <div className="text-sm font-medium">
-                {parsedCommand.type === 'remove' ? '🗑️ Removing:' : '➕ Adding:'}
+                {parsedCommand.type === 'remove' ? '🗑️ Removing:' : parsedCommand.type === 'change' ? '🔄 Changing:' : '➕ Adding:'}
               </div>
-              <Badge variant={parsedCommand.type === 'remove' ? 'destructive' : 'default'}>
+              <Badge variant={parsedCommand.type === 'remove' ? 'destructive' : parsedCommand.type === 'change' ? 'secondary' : 'default'}>
                 {parsedCommand.type}
               </Badge>
             </div>
@@ -349,7 +375,7 @@ export function VoiceHerbAdd() {
               <Badge variant="outline">
                 📍 {parsedCommand.location || 'backstock'}
               </Badge>
-              {parsedCommand.type === 'add' && (
+              {(parsedCommand.type === 'add' || parsedCommand.type === 'change') && (
                 <Badge variant={
                   parsedCommand.status === 'full' ? 'default' :
                   parsedCommand.status === 'low' ? 'secondary' : 'destructive'
@@ -440,7 +466,7 @@ export function VoiceHerbAdd() {
                 onClick={handleConfirm}
                 disabled={isProcessing}
                 className="flex-1"
-                variant={parsedCommand.type === 'remove' ? 'destructive' : 'default'}
+                variant={parsedCommand.type === 'remove' ? 'destructive' : parsedCommand.type === 'change' ? 'secondary' : 'default'}
               >
                 {parsedCommand.type === 'remove' ? (
                   <Trash2 className="h-4 w-4 mr-1" />
@@ -448,8 +474,8 @@ export function VoiceHerbAdd() {
                   <Check className="h-4 w-4 mr-1" />
                 )}
                 {isProcessing 
-                  ? (parsedCommand.type === 'remove' ? 'Removing...' : 'Adding...') 
-                  : (parsedCommand.type === 'remove' ? 'Confirm Remove' : 'Confirm Add')}
+                  ? (parsedCommand.type === 'remove' ? 'Removing...' : parsedCommand.type === 'change' ? 'Updating...' : 'Adding...') 
+                  : (parsedCommand.type === 'remove' ? 'Confirm Remove' : parsedCommand.type === 'change' ? 'Confirm Change' : 'Confirm Add')}
               </Button>
               <Button 
                 size="sm" 

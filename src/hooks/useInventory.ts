@@ -256,3 +256,37 @@ export function useRemoveInventoryByHerbName() {
     },
   });
 }
+
+export function useUpdateInventoryByHerbName() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ herbName, location, status }: { herbName: string; location: InventoryLocation; status: InventoryStatus }) => {
+      // First find the inventory item by herb name and location
+      const { data: inventoryItems, error: findError } = await supabase
+        .from('inventory')
+        .select('id, herbs!inner(name)')
+        .eq('location', location)
+        .ilike('herbs.name', herbName);
+      
+      if (findError) throw findError;
+      if (!inventoryItems || inventoryItems.length === 0) {
+        throw new Error(`${herbName} not found in ${location}`);
+      }
+      
+      // Update the inventory item status
+      const { data, error: updateError } = await supabase
+        .from('inventory')
+        .update({ status })
+        .eq('id', inventoryItems[0].id)
+        .select('*, herbs(*)')
+        .single();
+      
+      if (updateError) throw updateError;
+      return { herbName, location, status, data };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
