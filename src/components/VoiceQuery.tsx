@@ -27,48 +27,82 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
   }, [transcript, isListening]);
 
   const processQuery = async (query: string) => {
-    // Extract herb name from query
-    const words = query.toLowerCase().split(' ');
-    const herbKeywords = words.filter(w => 
-      !['is', 'the', 'in', 'backstock', 'do', 'we', 'have', 'any', 'where', 'what', 'about', 'check', 'a', 'an'].includes(w)
-    );
+    // Parse query to extract multiple herb names
+    const herbNames = parseMultipleHerbs(query);
     
-    if (herbKeywords.length === 0) {
-      setResponse("I didn't catch a herb name. Try asking something like 'Is Angelica in backstock?'");
+    if (herbNames.length === 0) {
+      setResponse("I didn't catch any herb names. Try asking something like 'Check backstock for Angelica and Skullcap'");
       return;
     }
 
-    // Apply smart herb name correction
-    const rawTerm = herbKeywords.join(' ');
-    const searchTerm = correctHerbName(rawTerm);
-    
     try {
-      const results = await searchInventory.mutateAsync(searchTerm);
-      setFoundItems(results);
-      onResult?.(results);
-      
-      if (results.length === 0) {
-        setResponse(`I couldn't find any inventory entries for "${searchTerm}".`);
-        speakResponse(`I couldn't find any inventory entries for ${searchTerm}.`);
-      } else {
-        const herbName = results[0].herbs?.name || searchTerm;
-        const locations = results.map(r => {
-          const status = r.status === 'full' ? 'fully stocked' : r.status === 'low' ? 'running low' : 'out of stock';
-          if (r.location === 'tincture' && r.tincture_ready_at) {
-            const readyDate = new Date(r.tincture_ready_at);
-            const isReady = readyDate <= new Date();
-            return `In tincture: ${isReady ? 'Ready!' : `Ready ${readyDate.toLocaleDateString()}`}`;
-          }
-          return `${r.location}: ${status}`;
-        });
+      const allResults: InventoryItem[] = [];
+      const responseTexts: string[] = [];
+      const notFoundHerbs: string[] = [];
+
+      // Search for each herb
+      for (const rawName of herbNames) {
+        const searchTerm = correctHerbName(rawName);
+        const results = await searchInventory.mutateAsync(searchTerm);
         
-        const responseText = `${herbName}: ${locations.join('. ')}`;
-        setResponse(responseText);
-        speakResponse(responseText);
+        if (results.length === 0) {
+          notFoundHerbs.push(searchTerm);
+        } else {
+          allResults.push(...results);
+          const herbName = results[0].herbs?.name || searchTerm;
+          const locations = results.map(r => {
+            const status = r.status === 'full' ? 'fully stocked' : r.status === 'low' ? 'running low' : 'out of stock';
+            if (r.location === 'tincture' && r.tincture_ready_at) {
+              const readyDate = new Date(r.tincture_ready_at);
+              const isReady = readyDate <= new Date();
+              return `${r.location}: ${isReady ? 'Ready!' : `Ready ${readyDate.toLocaleDateString()}`}`;
+            }
+            return `${r.location}: ${status}`;
+          });
+          responseTexts.push(`${herbName}: ${locations.join(', ')}`);
+        }
       }
+
+      setFoundItems(allResults);
+      onResult?.(allResults);
+
+      // Build response message
+      let fullResponse = responseTexts.join('. ');
+      if (notFoundHerbs.length > 0) {
+        const notFoundMsg = `Not found: ${notFoundHerbs.join(', ')}`;
+        fullResponse = fullResponse ? `${fullResponse}. ${notFoundMsg}` : notFoundMsg;
+      }
+
+      if (!fullResponse) {
+        fullResponse = "I couldn't find any inventory entries for those herbs.";
+      }
+
+      setResponse(fullResponse);
+      speakResponse(fullResponse);
     } catch (error) {
       setResponse("Sorry, I had trouble searching. Please try again.");
     }
+  };
+
+  // Parse multiple herb names from a query, handling "and", commas, etc.
+  const parseMultipleHerbs = (query: string): string[] => {
+    const lowerQuery = query.toLowerCase();
+    
+    // Remove common filler words
+    const fillerWords = ['is', 'the', 'in', 'backstock', 'do', 'we', 'have', 'any', 'where', 'what', 'about', 'check', 'a', 'an', 'for', 'tincture', 'clinic'];
+    let cleanedQuery = lowerQuery;
+    
+    // Split by "and" or commas to get potential herb segments
+    const segments = cleanedQuery
+      .split(/\s+and\s+|,\s*/)
+      .map(segment => {
+        // Clean each segment
+        const words = segment.split(' ').filter(w => !fillerWords.includes(w) && w.length > 0);
+        return words.join(' ').trim();
+      })
+      .filter(segment => segment.length > 0);
+    
+    return segments;
   };
 
   const speakResponse = (text: string) => {
