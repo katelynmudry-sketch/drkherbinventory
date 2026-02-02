@@ -34,24 +34,40 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-amber-50 dark:from-green-950/20 dark:to-amber-950/20">
-      {/* Header */}
+      {/* Header with Tabs */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <Leaf className="h-5 w-5 text-primary" />
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <Leaf className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-foreground">Herbal Inventory</h1>
+                <p className="text-xs text-muted-foreground">Your medicinary tracker</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Herbal Inventory</h1>
-              <p className="text-xs text-muted-foreground">Your medicinary tracker</p>
+            <div className="flex items-center gap-2">
+              <AddHerbDialog />
+              <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <AddHerbDialog />
-            <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
+          
+          {/* Tabs in header */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="tinctures" className="gap-2">
+                <Droplets className="h-4 w-4" />
+                Tinctures
+              </TabsTrigger>
+              <TabsTrigger value="bulk" className="gap-2">
+                <Package2 className="h-4 w-4" />
+                Bulk Herbs
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </header>
 
@@ -65,20 +81,9 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Tabbed Inventory */}
+        {/* Tab Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="tinctures" className="gap-2">
-              <Droplets className="h-4 w-4" />
-              Tinctures
-            </TabsTrigger>
-            <TabsTrigger value="bulk" className="gap-2">
-              <Package2 className="h-4 w-4" />
-              Bulk Herbs
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="tinctures" className="mt-6">
+          <TabsContent value="tinctures" className="mt-0">
             <section>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold">Inventory</h2>
@@ -118,7 +123,7 @@ const Index = () => {
             </section>
           </TabsContent>
 
-          <TabsContent value="bulk" className="mt-6">
+          <TabsContent value="bulk" className="mt-0">
             <BulkInventorySection />
           </TabsContent>
         </Tabs>
