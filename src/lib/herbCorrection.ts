@@ -36,6 +36,9 @@ export const CORRECTION_MAP: Record<string, string> = {
   "asha gonda": "Ashwagandha",
   "osha gonda": "Ashwagandha",
   "a sugar": "Ashwagandha",
+  "ash won da": "Ashwagandha",
+  "ashwa gonda": "Ashwagandha",
+  "osh won da": "Ashwagandha",
   
   // Echinacea variations
   "echinacea": "Echinacea Augustifolia",
@@ -43,47 +46,220 @@ export const CORRECTION_MAP: Record<string, string> = {
   "echinacea augs": "Echinacea Augustifolia",
   "echinacea purple": "Echinacea Purpurea Leaf",
   "echinacea purpur": "Echinacea Purpurea Leaf",
+  "echo nasa": "Echinacea Augustifolia",
+  "echo nasia": "Echinacea Augustifolia",
+  "etch in asia": "Echinacea Augustifolia",
   
   // Shatavari variations
   "shot a very": "Shatavari",
   "shot ovary": "Shatavari",
   "shatter very": "Shatavari",
   "chat a very": "Shatavari",
+  "shotta very": "Shatavari",
+  "shot of ari": "Shatavari",
   
   // Schisandra variations
   "she sandra": "Schisandra",
   "she's andra": "Schisandra",
   "she sondra": "Schisandra",
+  "shih sandra": "Schisandra",
+  "shih sondra": "Schisandra",
+  "ski sandra": "Schisandra",
   
-  // Common mishearings
-  "camomile": "Chamomile",
-  "lavander": "Lavender",
-  "lavendar": "Lavender",
-  "liquorice": "Licorice",
-  "liquorish": "Licorice",
-  "horse tail": "Horsetail",
-  "cats claw": "Cat's Claw",
-  "devils claw": "Devil's Claw",
-  "devils club": "Devil's Club",
-  "st johns wort": "Hypericum",
-  "saint johns wort": "Hypericum",
-  "cleavers": "Cleavers",
-  "cleaver": "Cleavers",
-  "comfrey": "Comfrey Root",
-  "golden rod": "Goldenrod",
-  "go to cola": "Gotu Kola",
-  "go to kola": "Gotu Kola",
+  // Skullcap variations
   "skull cap": "Skullcap",
   "skullcap": "Skullcap",
   "scutellaria": "Skullcap",
   "scut lat": "Skullcap",
+  "school cap": "Skullcap",
+  "skull cat": "Skullcap",
+  
+  // Gotu Kola variations
+  "go to cola": "Gotu Kola",
+  "go to kola": "Gotu Kola",
+  "go to call a": "Gotu Kola",
+  "goto cola": "Gotu Kola",
+  "go to koala": "Gotu Kola",
+  "goat to cola": "Gotu Kola",
+  "goat you cola": "Gotu Kola",
+  
+  // Eleuthero variations
+  "a luthero": "Eleuthero",
+  "a luthro": "Eleuthero",
+  "eluthra": "Eleuthero",
+  "you throw": "Eleuthero",
+  "el euro": "Eleuthero",
+  
+  // Rhodiola variations
+  "rodeo la": "Rhodiola",
+  "road e ola": "Rhodiola",
+  "radio la": "Rhodiola",
+  "roddy ola": "Rhodiola",
+  
+  // Valerian variations
+  "valarian": "Valerian",
+  "valerium": "Valerian",
+  "valeria": "Valerian",
+  "valerie anne": "Valerian",
+  
+  // Chamomile variations
+  "camomile": "Chamomile",
+  "camo mile": "Chamomile",
+  "camera mile": "Chamomile",
+  "cam a meal": "Chamomile",
+  
+  // Lavender variations
+  "lavander": "Lavender",
+  "lavendar": "Lavender",
+  "lava under": "Lavender",
+  
+  // Licorice variations
+  "liquorice": "Licorice",
+  "liquorish": "Licorice",
+  "licker ish": "Licorice",
+  "liquor ice": "Licorice",
+  
+  // Burdock variations
+  "bird dock": "Burdock",
+  "bur dock": "Burdock",
+  "bird duck": "Burdock",
+  
+  // Calendula variations
+  "calendar": "Calendula",
+  "calendar la": "Calendula",
+  "cal end you la": "Calendula",
+  
+  // Mullein variations
+  "mullen": "Mullein",
+  "mull in": "Mullein",
+  "mullin": "Mullein",
+  "mullen root": "Mullein Root",
+  "mull in root": "Mullein Root",
+  
+  // Hawthorn variations
+  "haw thorn": "Hawthorn",
+  "hall thorn": "Hawthorn",
+  "hot horn": "Hawthorn",
+  
+  // Meadowsweet variations
+  "meadow sweet": "Meadowsweet",
+  "metal sweet": "Meadowsweet",
+  "meadow suite": "Meadowsweet",
+  
+  // Motherwort variations
+  "mother wart": "Motherwort",
+  "mother wort": "Motherwort",
+  "mother worth": "Motherwort",
+  
+  // Passionflower variations
+  "passion flower": "Passion Flower",
+  "passionate flower": "Passion Flower",
+  "pasion flower": "Passion Flower",
+  
+  // Milk Thistle variations
+  "milk thistle": "Milk Thistle",
+  "milk thistles": "Milk Thistle",
+  "milk whistle": "Milk Thistle",
+  
+  // Lemon Balm variations
+  "lemon bomb": "Lemon Balm",
+  "lemon palm": "Lemon Balm",
+  "lemon balm": "Lemon Balm",
+  
+  // Vitex variations
+  "vite x": "Vitex",
+  "vita ex": "Vitex",
+  "vi tex": "Vitex",
+  "vee tex": "Vitex",
+  "chaste tree": "Vitex",
+  "chasteberry": "Vitex",
+  
+  // Bacopa variations
+  "back oh pa": "Bacopa",
+  "ba copa": "Bacopa",
+  "back opa": "Bacopa",
+  "brahmi": "Bacopa",
+  
+  // Tulsi variations
+  "tool see": "Tulsi",
+  "tule c": "Tulsi",
+  "holy basil": "Tulsi",
+  
+  // Astragalus variations
+  "astral agus": "Astragalus",
+  "astral gallus": "Astragalus",
+  "a straggle us": "Astragalus",
+  "astra gallus": "Astragalus",
+  
+  // Feverfew variations
+  "fever few": "Feverfew",
+  "fever view": "Feverfew",
+  "fever flew": "Feverfew",
+  
+  // Dandelion variations
+  "dandy lion": "Dandelion Leaf",
+  "dandy lion leaf": "Dandelion Leaf",
+  "dandy lion root": "Dandelion Root",
+  "dandelion": "Dandelion Leaf",
+  
+  // Nettle variations
+  "nettle": "Nettle Leaf",
+  "nettle leaf": "Nettle Leaf",
+  "nettle root": "Nettle Root",
+  "metal leaf": "Nettle Leaf",
+  "needle leaf": "Nettle Leaf",
+  
+  // Common mishearings
+  "horse tail": "Horsetail",
+  "cats claw": "Cat's Claw",
+  "cat's claw": "Cat's Claw",
+  "devils claw": "Devil's Claw",
+  "devil's claw": "Devil's Claw",
+  "devils club": "Devil's Club",
+  "devil's club": "Devil's Club",
+  "st johns wort": "Hypericum",
+  "saint johns wort": "Hypericum",
+  "saint john's wort": "Hypericum",
+  "cleavers": "Cleavers",
+  "cleaver": "Cleavers",
+  "clever": "Cleavers",
+  "comfrey": "Comfrey Root",
+  "come free": "Comfrey Root",
+  "golden rod": "Goldenrod",
   "shepherd's purse": "Shepherd's Purse",
   "shepherds purse": "Shepherd's Purse",
   "solomon seal": "Solomon's Seal",
   "solomons seal": "Solomon's Seal",
+  "solomon's seal": "Solomon's Seal",
   "osha root": "Osha",
   "dong quay": "Dong Quai",
   "dong kway": "Dong Quai",
+  "dong qway": "Dong Quai",
+  "blue co hash": "Blue Cohosh",
+  "black co hash": "Black Cohosh",
+  "blue vervane": "Blue Vervain",
+  "blue ver vain": "Blue Vervain",
+  "yarrow": "Yarrow",
+  "arrow": "Yarrow",
+  "yellow": "Yarrow",
+  "wild yam": "Wild Yam",
+  "wile yam": "Wild Yam",
+  "wild lettuce": "Wild Lettuce",
+  "while lettuce": "Wild Lettuce",
+  "rose mary": "Rosemary",
+  "rose marry": "Rosemary",
+  "pepper mint": "Peppermint",
+  "pepper meant": "Peppermint",
+  "ginger": "Ginger",
+  "jinger": "Ginger",
+  "oregon grape": "Oregon Grape",
+  "organ grape": "Oregon Grape",
+  "california poppy": "California Poppy",
+  "california puppy": "California Poppy",
+  "cramp bark": "Cramp Bark",
+  "gram bark": "Cramp Bark",
+  "black haw": "Black Haw",
+  "black hall": "Black Haw",
 };
 
 // Calculate Levenshtein distance for fuzzy matching
