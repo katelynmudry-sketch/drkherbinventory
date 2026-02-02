@@ -107,6 +107,8 @@ export function VoiceHerbAdd() {
       explicitLocation = 'tincture';
     } else if (text.includes('clinic')) {
       explicitLocation = 'clinic';
+    } else if (text.includes('bulk')) {
+      explicitLocation = 'bulk';
     }
     
     // Detect status (relevant for add and change commands)
@@ -128,7 +130,7 @@ export function VoiceHerbAdd() {
     
     // Extract herb names - remove command words and split by commas or "and"
     const cleanedText = text
-      .replace(/add to|add|remove from|remove|delete from|delete|take out of|take out|put in|put|change|set|mark|update|to|from|as|backstock|back stock|tincture|clinic|full|low|out|empty|stock|status/gi, '')
+      .replace(/add to|add|remove from|remove|delete from|delete|take out of|take out|put in|put|change|set|mark|update|to|from|as|backstock|back stock|tincture|clinic|bulk|full|low|out|empty|stock|status/gi, '')
       .trim();
     
     // Split by comma, "and", or multiple spaces

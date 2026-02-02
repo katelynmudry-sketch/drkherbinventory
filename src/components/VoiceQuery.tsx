@@ -89,7 +89,7 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
     const lowerQuery = query.toLowerCase();
     
     // Remove common filler words
-    const fillerWords = ['is', 'the', 'in', 'backstock', 'do', 'we', 'have', 'any', 'where', 'what', 'about', 'check', 'a', 'an', 'for', 'tincture', 'clinic'];
+    const fillerWords = ['is', 'the', 'in', 'backstock', 'do', 'we', 'have', 'any', 'where', 'what', 'about', 'check', 'a', 'an', 'for', 'tincture', 'clinic', 'bulk'];
     let cleanedQuery = lowerQuery;
     
     // Split by "and" or commas to get potential herb segments
