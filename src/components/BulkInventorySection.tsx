@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, Minus } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, Minus, ChevronsUpDown } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import {
   useInventory,
   useHerbs,
@@ -46,6 +59,7 @@ export function BulkInventorySection() {
   const [editNotes, setEditNotes] = useState('');
   const [showOutOnly, setShowOutOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [herbPickerOpen, setHerbPickerOpen] = useState(false);
 
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
@@ -129,10 +143,12 @@ export function BulkInventorySection() {
   const lowCount = inventory.filter(item => item.status === 'low').length;
   const totalCount = inventory.length;
 
+  const selectedHerb = availableHerbs.find(h => h.id === selectedHerbId);
+
   return (
     <div className="space-y-4">
       {/* Header with stats */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
             <Package2 className="h-5 w-5 text-amber-600" />
@@ -146,7 +162,7 @@ export function BulkInventorySection() {
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={handleDialogClose}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2 w-full sm:w-auto">
               <Plus className="h-4 w-4" />
               Add Herb
             </Button>
@@ -158,19 +174,52 @@ export function BulkInventorySection() {
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
                 <Label>Herb</Label>
-                <Select value={selectedHerbId} onValueChange={setSelectedHerbId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an herb" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableHerbs.map((herb) => (
-                      <SelectItem key={herb.id} value={herb.id}>
-                        {herb.name}
-                        {herb.common_name && ` (${herb.common_name})`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={herbPickerOpen} onOpenChange={setHerbPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={herbPickerOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {selectedHerb
+                        ? `${selectedHerb.name}${selectedHerb.common_name ? ` (${selectedHerb.common_name})` : ''}`
+                        : "Search or select an herb..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Type to search herbs..." />
+                      <CommandList>
+                        <CommandEmpty>No herb found.</CommandEmpty>
+                        <CommandGroup>
+                          {availableHerbs.map((herb) => (
+                            <CommandItem
+                              key={herb.id}
+                              value={`${herb.name} ${herb.common_name || ''}`}
+                              onSelect={() => {
+                                setSelectedHerbId(herb.id);
+                                setHerbPickerOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {herb.name}
+                              {herb.common_name && (
+                                <span className="ml-1 text-muted-foreground">({herb.common_name})</span>
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
