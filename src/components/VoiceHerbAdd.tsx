@@ -11,6 +11,7 @@ import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { correctHerbName, getHerbSuggestions } from '@/lib/herbCorrection';
+import { supabase } from '@/integrations/supabase/client';
 
 type CommandType = 'add' | 'remove' | 'change';
 
@@ -153,6 +154,28 @@ export function VoiceHerbAdd() {
     }
   };
 
+  // Pre-validate herbs exist for remove/change commands
+  const validateHerbsExist = async (herbNames: string[], location: InventoryLocation): Promise<{ found: string[]; notFound: string[] }> => {
+    const found: string[] = [];
+    const notFound: string[] = [];
+    
+    for (const herbName of herbNames) {
+      const { data: inventoryItems } = await supabase
+        .from('inventory')
+        .select('id, herbs!inner(name)')
+        .eq('location', location)
+        .ilike('herbs.name', herbName);
+      
+      if (inventoryItems && inventoryItems.length > 0) {
+        found.push(herbName);
+      } else {
+        notFound.push(herbName);
+      }
+    }
+    
+    return { found, notFound };
+  };
+
   const handleConfirm = async () => {
     if (!parsedCommand || parsedCommand.herbNames.length === 0) {
       toast.error('No herbs detected in your command');
@@ -166,45 +189,67 @@ export function VoiceHerbAdd() {
     let successCount = 0;
     let errorCount = 0;
 
-    if (parsedCommand.type === 'remove') {
-      // Handle remove command
-      for (const herbName of parsedCommand.herbNames) {
-        try {
-          await removeInventory.mutateAsync({ herbName, location });
-          successCount++;
-        } catch (error: any) {
-          console.error(`Failed to remove ${herbName}:`, error);
-          toast.error(error.message || `Failed to remove ${herbName}`);
-          errorCount++;
-        }
-      }
-
-      setIsProcessing(false);
+    if (parsedCommand.type === 'remove' || parsedCommand.type === 'change') {
+      // Pre-validate that all herbs exist in the specified location
+      const { found, notFound } = await validateHerbsExist(parsedCommand.herbNames, location);
       
-      if (successCount > 0) {
-        const message = `Removed ${successCount} herb${successCount > 1 ? 's' : ''} from ${location}`;
-        toast.success(message);
-        speakResponse(message);
-      }
-    } else if (parsedCommand.type === 'change') {
-      // Handle change/update status command
-      for (const herbName of parsedCommand.herbNames) {
-        try {
-          await updateInventory.mutateAsync({ herbName, location, status });
-          successCount++;
-        } catch (error: any) {
-          console.error(`Failed to update ${herbName}:`, error);
-          toast.error(error.message || `Failed to update ${herbName}`);
-          errorCount++;
+      if (notFound.length > 0) {
+        setIsProcessing(false);
+        const notFoundMsg = notFound.length === 1 
+          ? `"${notFound[0]}" is not in ${location}.` 
+          : `These herbs are not in ${location}: ${notFound.join(', ')}.`;
+        const clarifyMsg = `${notFoundMsg} Please check the spelling or location.`;
+        toast.error(clarifyMsg);
+        speakResponse(clarifyMsg);
+        
+        // Keep only the herbs that weren't found so user can correct them
+        if (found.length > 0) {
+          // Some herbs were found, proceed with those and keep notFound for editing
+          setParsedCommand({ ...parsedCommand, herbNames: notFound });
         }
+        return;
       }
-
-      setIsProcessing(false);
       
-      if (successCount > 0) {
-        const message = `Changed ${successCount} herb${successCount > 1 ? 's' : ''} in ${location} to ${status}`;
-        toast.success(message);
-        speakResponse(message);
+      if (parsedCommand.type === 'remove') {
+        // Handle remove command
+        for (const herbName of parsedCommand.herbNames) {
+          try {
+            await removeInventory.mutateAsync({ herbName, location });
+            successCount++;
+          } catch (error: any) {
+            console.error(`Failed to remove ${herbName}:`, error);
+            toast.error(error.message || `Failed to remove ${herbName}`);
+            errorCount++;
+          }
+        }
+
+        setIsProcessing(false);
+        
+        if (successCount > 0) {
+          const message = `Removed ${successCount} herb${successCount > 1 ? 's' : ''} from ${location}`;
+          toast.success(message);
+          speakResponse(message);
+        }
+      } else {
+        // Handle change/update status command
+        for (const herbName of parsedCommand.herbNames) {
+          try {
+            await updateInventory.mutateAsync({ herbName, location, status });
+            successCount++;
+          } catch (error: any) {
+            console.error(`Failed to update ${herbName}:`, error);
+            toast.error(error.message || `Failed to update ${herbName}`);
+            errorCount++;
+          }
+        }
+
+        setIsProcessing(false);
+        
+        if (successCount > 0) {
+          const message = `Changed ${successCount} herb${successCount > 1 ? 's' : ''} in ${location} to ${status}`;
+          toast.success(message);
+          speakResponse(message);
+        }
       }
     } else {
       // Handle add command
