@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2 } from 'lucide-react';
+import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,12 +10,43 @@ import { BulkInventorySection } from '@/components/BulkInventorySection';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { AuthForm } from '@/components/AuthForm';
 import { useAuth } from '@/hooks/useAuth';
+import { useInventory } from '@/hooks/useInventory';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
+  const { data: allInventory = [] } = useInventory();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('tinctures');
+
+  const handleExportCsv = () => {
+    if (allInventory.length === 0) {
+      toast.error('No inventory data to export');
+      return;
+    }
+    const headers = ['Herb Name', 'Common Name', 'Location', 'Status', 'Quantity', 'Notes', 'Tincture Started', 'Tincture Ready', 'Created At'];
+    const rows = allInventory.map(item => [
+      item.herbs?.name || '',
+      item.herbs?.common_name || '',
+      item.location,
+      item.status,
+      item.quantity,
+      (item.notes || '').replace(/"/g, '""'),
+      item.tincture_started_at || '',
+      item.tincture_ready_at || '',
+      item.created_at,
+    ]);
+    const csvContent = [headers, ...rows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `herbal-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Inventory exported successfully');
+  };
 
   if (loading) {
     return (
@@ -49,6 +80,9 @@ const Index = () => {
             </div>
             <div className="flex items-center gap-2">
               <AddHerbDialog />
+              <Button variant="ghost" size="icon" onClick={handleExportCsv} title="Export to CSV">
+                <Download className="h-4 w-4" />
+              </Button>
               <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>
