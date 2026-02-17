@@ -139,7 +139,8 @@ export function VoiceHerbAdd() {
       .split(/,|and|\s{2,}/)
       .map(name => name.trim())
       .filter(name => name.length > 1)
-      .map(name => correctHerbName(name)); // Apply smart correction
+      .map(name => correctHerbName(name)) // Apply smart correction
+      .filter((name): name is string => name !== null); // Drop anything that didn't match a known herb
     
     return { type, location, status, herbNames };
   };

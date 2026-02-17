@@ -42,7 +42,7 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
 
       // Search for each herb
       for (const rawName of herbNames) {
-        const searchTerm = correctHerbName(rawName);
+        const searchTerm = correctHerbName(rawName) ?? rawName;
         const results = await searchInventory.mutateAsync(searchTerm);
         
         if (results.length === 0) {
