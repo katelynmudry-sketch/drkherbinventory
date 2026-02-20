@@ -94,6 +94,119 @@ export type Database = {
           },
         ]
       }
+      suppliers: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          url: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          url?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          url?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      herb_pricing: {
+        Row: {
+          id: string
+          user_id: string
+          herb_name: string
+          supplier_id: string
+          price_per_lb: number
+          package_size_g: number | null
+          package_price: number | null
+          supplier_item_code: string | null
+          supplier_item_name: string | null
+          notes: string | null
+          last_updated: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          herb_name: string
+          supplier_id: string
+          price_per_lb: number
+          package_size_g?: number | null
+          package_price?: number | null
+          supplier_item_code?: string | null
+          supplier_item_name?: string | null
+          notes?: string | null
+          last_updated?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          herb_name?: string
+          supplier_id?: string
+          price_per_lb?: number
+          package_size_g?: number | null
+          package_price?: number | null
+          supplier_item_code?: string | null
+          supplier_item_name?: string | null
+          notes?: string | null
+          last_updated?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "herb_pricing_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      herb_reorder_qty: {
+        Row: {
+          id: string
+          user_id: string
+          herb_name: string
+          quantity_lb: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          herb_name: string
+          quantity_lb?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          herb_name?: string
+          quantity_lb?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

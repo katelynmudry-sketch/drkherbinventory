@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -80,6 +81,9 @@ const Index = () => {
             </div>
             <div className="flex items-center gap-2">
               <AddHerbDialog />
+              <Button variant="ghost" size="icon" asChild title="Ordering">
+                <Link to="/ordering"><ShoppingCart className="h-4 w-4" /></Link>
+              </Button>
               <Button variant="ghost" size="icon" onClick={handleExportCsv} title="Export to CSV">
                 <Download className="h-4 w-4" />
               </Button>
