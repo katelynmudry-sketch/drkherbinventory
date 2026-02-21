@@ -5,14 +5,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useSearchInventory, InventoryItem } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
-import { correctHerbName } from '@/lib/herbCorrection';
+import { scanForHerbs } from '@/lib/herbCorrection';
 
 interface VoiceQueryProps {
   onResult?: (items: InventoryItem[]) => void;
 }
 
 export function VoiceQuery({ onResult }: VoiceQueryProps) {
-  const { transcript, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
+  const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const searchInventory = useSearchInventory();
   const [lastQuery, setLastQuery] = useState('');
   const [response, setResponse] = useState<string | null>(null);
@@ -22,13 +22,13 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
   useEffect(() => {
     if (transcript && transcript !== lastQuery && !isListening) {
       setLastQuery(transcript);
-      processQuery(transcript);
+      processQuery(transcript, alternatives);
     }
-  }, [transcript, isListening]);
+  }, [transcript, alternatives, isListening]);
 
-  const processQuery = async (query: string) => {
-    // Parse query to extract multiple herb names
-    const herbNames = parseMultipleHerbs(query);
+  const processQuery = async (query: string, alts: string[] = []) => {
+    // Parse query to extract multiple herb names using scan-and-match
+    const herbNames = parseMultipleHerbs(query, alts);
     
     if (herbNames.length === 0) {
       setResponse("I didn't catch any herb names. Try asking something like 'Check backstock for Angelica and Skullcap'");
@@ -42,7 +42,7 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
 
       // Search for each herb
       for (const rawName of herbNames) {
-        const searchTerm = correctHerbName(rawName) ?? rawName;
+        const searchTerm = rawName; // already corrected by scanForHerbs
         const results = await searchInventory.mutateAsync(searchTerm);
         
         if (results.length === 0) {
@@ -84,25 +84,26 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
     }
   };
 
-  // Parse multiple herb names from a query, handling "and", commas, etc.
-  const parseMultipleHerbs = (query: string): string[] => {
-    const lowerQuery = query.toLowerCase();
-    
-    // Remove common filler words
-    const fillerWords = ['is', 'the', 'in', 'backstock', 'do', 'we', 'have', 'any', 'where', 'what', 'about', 'check', 'a', 'an', 'for', 'tincture', 'clinic', 'bulk'];
-    let cleanedQuery = lowerQuery;
-    
-    // Split by "and" or commas to get potential herb segments
-    const segments = cleanedQuery
-      .split(/\s+and\s+|,\s*/)
-      .map(segment => {
-        // Clean each segment
-        const words = segment.split(' ').filter(w => !fillerWords.includes(w) && w.length > 0);
-        return words.join(' ').trim();
-      })
-      .filter(segment => segment.length > 0);
-    
-    return segments;
+  // Parse multiple herb names using scan-and-match across all speech alternatives.
+  const parseMultipleHerbs = (query: string, alts: string[] = []): string[] => {
+    const tokenize = (text: string) =>
+      text.toLowerCase()
+        .replace(/,/g, ' ')
+        .split(/\s+/)
+        .map(t => t.replace(/[^a-z']/g, ''))
+        .filter(t => t.length > 0 && t !== 'and');
+
+    // Try primary transcript first
+    const primary = scanForHerbs(tokenize(query));
+    if (primary.length > 0) return primary;
+
+    // Fall back through alternatives (Option A)
+    for (const alt of alts.slice(1)) {
+      const found = scanForHerbs(tokenize(alt));
+      if (found.length > 0) return found;
+    }
+
+    return [];
   };
 
   const speakResponse = (text: string) => {

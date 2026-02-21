@@ -509,6 +509,194 @@ export const CORRECTION_MAP: Record<string, string> = {
   "osha?": "Osha",
 };
 
+// ---------------------------------------------------------------------------
+// Double Metaphone — pure TypeScript, no dependencies
+// Returns two phonetic codes (primary, secondary) for a word.
+// For multi-word inputs we encode each word and join with '-'.
+// ---------------------------------------------------------------------------
+function doubleMetaphone(word: string): [string, string] {
+  const w = word.toUpperCase().replace(/[^A-Z]/g, '');
+  if (!w) return ['', ''];
+
+  let pri = '';
+  let sec = '';
+  let i = 0;
+
+  const at = (pos: number, ...chars: string[]): boolean =>
+    chars.some(c => w.slice(pos, pos + c.length) === c);
+
+  const add = (p: string, s?: string) => {
+    pri += p;
+    sec += s !== undefined ? s : p;
+  };
+
+  // Handle initial silent letters / special two-char starts
+  if (at(0, 'AE', 'GN', 'KN', 'PN', 'WR')) i = 1;
+  if (w[0] === 'X') { add('S'); i = 1; }
+
+  while (i < w.length && (pri.length < 6 || sec.length < 6)) {
+    const c = w[i];
+    switch (c) {
+      case 'A': case 'E': case 'I': case 'O': case 'U': case 'Y':
+        if (i === 0) add('A');
+        i++; break;
+
+      case 'B':
+        add('P');
+        i += (w[i + 1] === 'B') ? 2 : 1; break;
+
+      case 'C':
+        if (at(i, 'CIA') || at(i, 'CH')) { add('X'); i += 2; break; }
+        if (at(i - 1, 'SCH')) { i++; break; }
+        if (at(i, 'CI', 'CE', 'CY')) { add('S'); i += 2; break; }
+        add('K');
+        i += at(i, 'CK', 'CQ') ? 2 : 1; break;
+
+      case 'D':
+        if (at(i, 'DG') && at(i + 2, 'I', 'E', 'Y')) { add('J'); i += 3; break; }
+        if (at(i, 'DT', 'DD')) { add('T'); i += 2; break; }
+        add('T'); i++; break;
+
+      case 'F':
+        add('F');
+        i += w[i + 1] === 'F' ? 2 : 1; break;
+
+      case 'G':
+        if (w[i + 1] === 'H') {
+          if (i > 0 && !'AEIOU'.includes(w[i - 1])) { i += 2; break; }
+          if (i === 0) { add('K'); i += 2; break; }
+          i += 2; break;
+        }
+        if (w[i + 1] === 'N') {
+          if (i === 1 && 'AEIOU'.includes(w[0])) { add('KN', 'N'); }
+          else add('K');
+          i += 2; break;
+        }
+        if (at(i - 1, 'G') && at(i, 'GE', 'GI', 'GY')) { add('K', 'J'); i++; break; }
+        if (at(i, 'GE', 'GI', 'GY')) { add('K', 'J'); i += 2; break; }
+        add('K');
+        i += w[i + 1] === 'G' ? 2 : 1; break;
+
+      case 'H':
+        if ('AEIOU'.includes(w[i + 1]) && (i === 0 || 'AEIOU'.includes(w[i - 1]))) add('H');
+        i++; break;
+
+      case 'J':
+        if (at(i, 'JOSE') || at(0, 'SAN ')) { add('H'); i++; break; }
+        add('J', 'H'); i++; break;
+
+      case 'K':
+        if (w[i - 1] === 'C') { i++; break; }
+        add('K');
+        i += w[i + 1] === 'K' ? 2 : 1; break;
+
+      case 'L':
+        add('L');
+        i += w[i + 1] === 'L' ? 2 : 1; break;
+
+      case 'M':
+        if ((at(i - 1, 'UMB') && (i + 1 === w.length || w[i + 2] === 'ER')) || w[i + 1] === 'M') {
+          i += 2; add('M'); break;
+        }
+        add('M'); i++; break;
+
+      case 'N':
+        add('N');
+        i += w[i + 1] === 'N' ? 2 : 1; break;
+
+      case 'P':
+        if (w[i + 1] === 'H') { add('F'); i += 2; break; }
+        add('P');
+        i += 'PB'.includes(w[i + 1]) ? 2 : 1; break;
+
+      case 'Q':
+        add('K');
+        i += w[i + 1] === 'Q' ? 2 : 1; break;
+
+      case 'R':
+        add('R');
+        i += w[i + 1] === 'R' ? 2 : 1; break;
+
+      case 'S':
+        if (at(i - 1, 'ISL', 'YSL')) { i++; break; }
+        if (i === 0 && at(i, 'SUGAR')) { add('X', 'S'); i++; break; }
+        if (at(i, 'SH') || at(i, 'SIO', 'SIA')) { add('X'); i += 2; break; }
+        if (at(i, 'SC')) {
+          if (w[i + 2] === 'H') { add('SK'); i += 3; break; }
+          if ('IEY'.includes(w[i + 2])) { add('S'); i += 3; break; }
+          add('SK'); i += 3; break;
+        }
+        add('S');
+        i += 'SZ'.includes(w[i + 1]) ? 2 : 1; break;
+
+      case 'T':
+        if (at(i, 'TIA', 'TCH')) { add('X'); i += 3; break; }
+        if (at(i, 'TH') || at(i, 'TTH')) { add('0', 'T'); i += 2; break; }
+        add('T');
+        i += 'TD'.includes(w[i + 1]) ? 2 : 1; break;
+
+      case 'V':
+        add('F');
+        i += w[i + 1] === 'V' ? 2 : 1; break;
+
+      case 'W':
+        if (at(i, 'WR')) { add('R'); i += 2; break; }
+        if (i === 0 && 'AEIOU'.includes(w[i + 1])) { add('A'); }
+        if (at(i - 1, 'EWSKI', 'EWSKY', 'OWSKI', 'OWSKY') || at(0, 'SCH')) {
+          sec += 'F'; i++; break;
+        }
+        if (at(i, 'WICZ', 'WITZ')) { add('TS', 'FX'); i += 4; break; }
+        i++; break;
+
+      case 'X':
+        if (!(i === w.length - 1 && (at(i - 3, 'IAU', 'EAU') || at(i - 2, 'AU', 'OU')))) {
+          add('KS');
+        }
+        i += 'CX'.includes(w[i + 1]) ? 2 : 1; break;
+
+      case 'Z':
+        if (w[i + 1] === 'H') { add('J'); i += 2; break; }
+        if (at(i + 1, 'ZO', 'ZI', 'ZA') || (i > 0 && w[i - 1] !== 'T')) {
+          add('S', 'TS');
+        } else {
+          add('S');
+        }
+        i += w[i + 1] === 'Z' ? 2 : 1; break;
+
+      default:
+        i++;
+    }
+  }
+
+  return [pri.slice(0, 6), sec.slice(0, 6)];
+}
+
+// Encode a potentially multi-word string: encode each word, join with '-'
+function phoneticKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z ]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => doubleMetaphone(w)[0])
+    .join('-');
+}
+
+// Pre-computed phonetic keys for all herbs { phoneticKey -> herb }
+// Built once at module load time.
+const HERB_PHONETIC_MAP: Map<string, string> = new Map();
+const HERB_PHONETIC_SECONDARY: Map<string, string> = new Map();
+(function buildPhoneticMap() {
+  for (const herb of HERB_LIST) {
+    const words = herb.toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(Boolean);
+    const primary = words.map(w => doubleMetaphone(w)[0]).join('-');
+    const secondary = words.map(w => doubleMetaphone(w)[1] || doubleMetaphone(w)[0]).join('-');
+    HERB_PHONETIC_MAP.set(primary, herb);
+    HERB_PHONETIC_SECONDARY.set(secondary, herb);
+  }
+})();
+
+// ---------------------------------------------------------------------------
 // Calculate Levenshtein distance for fuzzy matching
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = [];
@@ -546,14 +734,37 @@ export function findBestHerbMatch(input: string, threshold = 0.6): string | null
     return CORRECTION_MAP[normalized];
   }
 
-  // 2. Partial correction map lookup
+  // 2. Partial correction map lookup (input contains key, or key contains input)
   for (const [key, value] of Object.entries(CORRECTION_MAP)) {
     if (normalized.includes(key) || key.includes(normalized)) {
       return value;
     }
   }
 
-  // 3. Fuzzy match against herb list
+  // 3. Phonetic (Double Metaphone) lookup — catches mishearings like "shot ovary" → Shatavari
+  const inputPhonetic = phoneticKey(normalized);
+  if (inputPhonetic) {
+    const phoneticMatch = HERB_PHONETIC_MAP.get(inputPhonetic) ?? HERB_PHONETIC_SECONDARY.get(inputPhonetic);
+    if (phoneticMatch) return phoneticMatch;
+
+    // Also try phonetic match on each word of correction map keys
+    for (const [key, value] of Object.entries(CORRECTION_MAP)) {
+      if (phoneticKey(key) === inputPhonetic) return value;
+    }
+
+    // Partial phonetic: if all words in input phonetic appear in sequence in the herb phonetic
+    for (const [herbPhonetic, herb] of HERB_PHONETIC_MAP) {
+      const inputCodes = inputPhonetic.split('-').filter(Boolean);
+      const herbCodes = herbPhonetic.split('-').filter(Boolean);
+      // Match if at least half the input phoneme codes appear in the herb
+      const matches = inputCodes.filter(code => herbCodes.includes(code)).length;
+      if (inputCodes.length >= 2 && matches >= Math.ceil(inputCodes.length * 0.6)) {
+        return herb;
+      }
+    }
+  }
+
+  // 4. Fuzzy (Levenshtein) match against herb list
   let bestMatch: string | null = null;
   let bestScore = 0;
 
@@ -587,6 +798,44 @@ export function findBestHerbMatch(input: string, threshold = 0.6): string | null
 // Correct a herb name — returns null if no match found (herb not in inventory)
 export function correctHerbName(input: string): string | null {
   return findBestHerbMatch(input);
+}
+
+// Try to match all alternatives from the Speech API, return the best herb found
+// across all hypotheses. Used by the parser to pick the best transcription.
+export function findBestHerbMatchFromAlternatives(alternatives: string[]): string | null {
+  for (const alt of alternatives) {
+    const match = findBestHerbMatch(alt);
+    if (match) return match;
+  }
+  return null;
+}
+
+// Scan-and-match: given a sequence of tokens (words) from the transcript,
+// try every window of 1-4 consecutive tokens and return all matched herb names
+// in the order they appear. Overlapping matches use the longest one.
+export function scanForHerbs(tokens: string[]): string[] {
+  const found: string[] = [];
+  const usedIndices = new Set<number>();
+
+  // Try longest windows first so "Dandelion Root" beats "Dandelion"
+  for (let windowSize = 4; windowSize >= 1; windowSize--) {
+    for (let start = 0; start <= tokens.length - windowSize; start++) {
+      // Skip if any of these tokens already consumed
+      if ([...Array(windowSize)].some((_, k) => usedIndices.has(start + k))) continue;
+
+      const phrase = tokens.slice(start, start + windowSize).join(' ');
+      const match = findBestHerbMatch(phrase, 0.65);
+      if (match) {
+        found.push({ match, start, end: start + windowSize - 1 } as any);
+        for (let k = 0; k < windowSize; k++) usedIndices.add(start + k);
+      }
+    }
+  }
+
+  // Sort by position and extract names
+  return (found as any[])
+    .sort((a, b) => a.start - b.start)
+    .map(f => f.match);
 }
 
 // Get suggestions for autocomplete

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, Minus, ChevronsUpDown } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,10 +34,18 @@ import {
   useUpdateInventory,
   useDeleteInventory,
   useUpdateHerb,
-  InventoryStatus,
   InventoryItem,
 } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
+
+// Standard lb increments available in the UI
+const LB_OPTIONS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 5];
+const LOW_STOCK_THRESHOLD = 0.5; // lbs
+
+function formatLbs(qty: number): string {
+  // Display as clean decimal: 1 → "1", 0.25 → "0.25", 1.5 → "1.5"
+  return qty % 1 === 0 ? String(qty) : String(qty);
+}
 
 export function BulkInventorySection() {
   const { data: inventory = [], isLoading } = useInventory('bulk');
@@ -49,34 +57,28 @@ export function BulkInventorySection() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('full');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedNotes, setSelectedNotes] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
   const [editQuantity, setEditQuantity] = useState(1);
   const [editHerbName, setEditHerbName] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const [showOutOnly, setShowOutOnly] = useState(false);
+  const [showLowOnly, setShowLowOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [herbPickerOpen, setHerbPickerOpen] = useState(false);
 
-  // Status priority for sorting (out first, then low, then full)
-  const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
-
   const handleAdd = async () => {
     if (!selectedHerbId) return;
-    
+
     await addInventory.mutateAsync({
       herb_id: selectedHerbId,
       location: 'bulk',
-      status: selectedStatus,
+      status: 'full', // kept in DB but not surfaced in bulk UI
       quantity: selectedQuantity,
       notes: selectedNotes || undefined,
     });
-    
+
     setSelectedHerbId('');
-    setSelectedStatus('full');
     setSelectedQuantity(1);
     setSelectedNotes('');
     setIsAddDialogOpen(false);
@@ -86,7 +88,6 @@ export function BulkInventorySection() {
     setIsAddDialogOpen(open);
     if (!open) {
       setSelectedHerbId('');
-      setSelectedStatus('full');
       setSelectedQuantity(1);
       setSelectedNotes('');
     }
@@ -97,9 +98,11 @@ export function BulkInventorySection() {
     if (currentHerb && currentHerb.name !== newHerbName && newHerbName.trim()) {
       await updateHerb.mutateAsync({ id: herbId, name: newHerbName.trim() });
     }
-    await updateInventory.mutateAsync({ 
-      id, 
-      status: editStatus, 
+    // Derive status from quantity for DB consistency
+    const status = editQuantity <= 0.25 ? 'out' : editQuantity <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+    await updateInventory.mutateAsync({
+      id,
+      status,
       quantity: editQuantity,
       notes: editNotes || null,
     });
@@ -110,37 +113,36 @@ export function BulkInventorySection() {
     await deleteInventory.mutateAsync(id);
   };
 
-  // Filter out herbs that are already in bulk
+  // Filter out herbs already in bulk
   const existingHerbIds = inventory.map(item => item.herb_id);
   const availableHerbs = herbs.filter(herb => !existingHerbIds.includes(herb.id));
 
-  // Filter by search query and status filter, then sort
+  // Filter and sort: low stock first, then alphabetical
   const filteredInventory = useMemo(() => {
     return inventory
       .filter(item => {
         if (searchQuery) {
           const query = searchQuery.toLowerCase();
-          const matchesSearch = 
+          const matchesSearch =
             item.herbs?.name?.toLowerCase().includes(query) ||
             item.herbs?.common_name?.toLowerCase().includes(query);
           if (!matchesSearch) return false;
         }
-        if (showOutOnly && item.status !== 'out') {
+        if (showLowOnly && (item.quantity ?? 1) > LOW_STOCK_THRESHOLD) {
           return false;
         }
         return true;
       })
       .sort((a, b) => {
-        const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
-        if (priorityDiff !== 0) return priorityDiff;
+        const qtyDiff = (a.quantity ?? 1) - (b.quantity ?? 1);
+        if (qtyDiff !== 0) return qtyDiff;
         const nameA = a.herbs?.name?.toLowerCase() || '';
         const nameB = b.herbs?.name?.toLowerCase() || '';
         return nameA.localeCompare(nameB);
       });
-  }, [inventory, searchQuery, showOutOnly]);
+  }, [inventory, searchQuery, showLowOnly]);
 
-  const outCount = inventory.filter(item => item.status === 'out').length;
-  const lowCount = inventory.filter(item => item.status === 'low').length;
+  const lowCount = inventory.filter(item => (item.quantity ?? 1) <= LOW_STOCK_THRESHOLD).length;
   const totalCount = inventory.length;
 
   const selectedHerb = availableHerbs.find(h => h.id === selectedHerbId);
@@ -156,7 +158,7 @@ export function BulkInventorySection() {
           <div>
             <h2 className="text-xl font-bold">Bulk Herb Inventory</h2>
             <p className="text-sm text-muted-foreground">
-              {totalCount} herbs • {lowCount} low • {outCount} out
+              {totalCount} herbs • {lowCount} low stock
             </p>
           </div>
         </div>
@@ -221,55 +223,26 @@ export function BulkInventorySection() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as InventoryStatus)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="full">Full</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="out">Out</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>Quantity (bags)</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10"
-                      onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
-                      disabled={selectedQuantity <= 1}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={selectedQuantity}
-                      onChange={(e) => setSelectedQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="text-center"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10"
-                      onClick={() => setSelectedQuantity(selectedQuantity + 1)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+
+              <div className="space-y-2">
+                <Label>Quantity (lbs)</Label>
+                <Select
+                  value={String(selectedQuantity)}
+                  onValueChange={(v) => setSelectedQuantity(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>
+                        {formatLbs(lb)} lb
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              
+
               <div className="space-y-2">
                 <Label>Notes (optional)</Label>
                 <Textarea
@@ -279,7 +252,7 @@ export function BulkInventorySection() {
                   rows={2}
                 />
               </div>
-              
+
               <Button
                 className="w-full"
                 onClick={handleAdd}
@@ -304,13 +277,13 @@ export function BulkInventorySection() {
           />
         </div>
         <Toggle
-          pressed={showOutOnly}
-          onPressedChange={setShowOutOnly}
+          pressed={showLowOnly}
+          onPressedChange={setShowLowOnly}
           variant="outline"
-          className="gap-1 data-[state=on]:bg-red-500/20 data-[state=on]:text-red-700 dark:data-[state=on]:text-red-400"
+          className="gap-1 data-[state=on]:bg-yellow-500/20 data-[state=on]:text-yellow-700 dark:data-[state=on]:text-yellow-400"
         >
           <Filter className="h-4 w-4" />
-          Out Only{outCount > 0 && ` (${outCount})`}
+          Low Stock{lowCount > 0 && ` (${lowCount})`}
         </Toggle>
       </div>
 
@@ -328,20 +301,17 @@ export function BulkInventorySection() {
               key={item.id}
               item={item}
               isEditing={editingId === item.id}
-              editStatus={editStatus}
               editQuantity={editQuantity}
               editHerbName={editHerbName}
               editNotes={editNotes}
               onStartEdit={() => {
                 setEditingId(item.id);
-                setEditStatus(item.status);
-                setEditQuantity(item.quantity || 1);
+                setEditQuantity(item.quantity ?? 1);
                 setEditHerbName(item.herbs?.name || '');
                 setEditNotes(item.notes || '');
               }}
               onCancelEdit={() => setEditingId(null)}
               onSaveEdit={() => handleUpdateItem(item.id, item.herb_id, editHerbName)}
-              onStatusChange={setEditStatus}
               onQuantityChange={setEditQuantity}
               onHerbNameChange={setEditHerbName}
               onNotesChange={setEditNotes}
@@ -357,14 +327,12 @@ export function BulkInventorySection() {
 interface BulkItemCardProps {
   item: InventoryItem;
   isEditing: boolean;
-  editStatus: InventoryStatus;
   editQuantity: number;
   editHerbName: string;
   editNotes: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
-  onStatusChange: (status: InventoryStatus) => void;
   onQuantityChange: (qty: number) => void;
   onHerbNameChange: (name: string) => void;
   onNotesChange: (notes: string) => void;
@@ -374,26 +342,25 @@ interface BulkItemCardProps {
 function BulkItemCard({
   item,
   isEditing,
-  editStatus,
   editQuantity,
   editHerbName,
   editNotes,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-  onStatusChange,
   onQuantityChange,
   onHerbNameChange,
   onNotesChange,
   onDelete,
 }: BulkItemCardProps) {
+  const qty = item.quantity ?? 1;
+  const isLow = qty <= LOW_STOCK_THRESHOLD;
+
   return (
     <Card
       className={cn(
         "transition-colors",
-        item.status === 'full' && "border-green-500/30 bg-green-500/5",
-        item.status === 'low' && "border-yellow-500/30 bg-yellow-500/5",
-        item.status === 'out' && "border-red-500/30 bg-red-500/5"
+        isLow ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"
       )}
     >
       <CardContent className="p-4">
@@ -405,49 +372,26 @@ function BulkItemCard({
               className="h-8 text-sm font-medium"
               placeholder="Herb name"
             />
-            
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Quantity (lbs)</Label>
+              <Select
+                value={String(editQuantity)}
+                onValueChange={(v) => onQuantityChange(Number(v))}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="full">Full</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="out">Out</SelectItem>
+                  {LB_OPTIONS.map(lb => (
+                    <SelectItem key={lb} value={String(lb)}>
+                      {formatLbs(lb)} lb
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onQuantityChange(Math.max(1, editQuantity - 1))}
-                  disabled={editQuantity <= 1}
-                >
-                  <Minus className="h-3 w-3" />
-                </Button>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editQuantity}
-                  onChange={(e) => onQuantityChange(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="h-8 text-center text-xs px-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => onQuantityChange(editQuantity + 1)}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
             </div>
-            
+
             <Textarea
               placeholder="Notes..."
               value={editNotes}
@@ -455,7 +399,7 @@ function BulkItemCard({
               rows={2}
               className="text-xs"
             />
-            
+
             <div className="flex gap-1 justify-end">
               <Button size="sm" variant="ghost" onClick={onCancelEdit}>
                 <X className="h-4 w-4" />
@@ -474,9 +418,9 @@ function BulkItemCard({
                   <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
                 )}
               </div>
-              <StatusBadge status={item.status} quantity={item.quantity} />
+              <LbsBadge qty={qty} />
             </div>
-            
+
             {item.notes && (
               <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{item.notes}</p>
             )}
@@ -496,19 +440,18 @@ function BulkItemCard({
   );
 }
 
-function StatusBadge({ status, quantity }: { status: InventoryStatus; quantity?: number }) {
-  const displayQty = quantity && quantity > 1 ? ` x${quantity}` : '';
-  
+function LbsBadge({ qty }: { qty: number }) {
+  const isLow = qty <= LOW_STOCK_THRESHOLD;
   return (
     <span
       className={cn(
         "rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap",
-        status === 'full' && "bg-green-500/20 text-green-700 dark:text-green-400",
-        status === 'low' && "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-        status === 'out' && "bg-red-500/20 text-red-700 dark:text-red-400"
+        isLow
+          ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400"
+          : "bg-green-500/20 text-green-700 dark:text-green-400"
       )}
     >
-      {status.charAt(0).toUpperCase() + status.slice(1)}{displayQty}
+      {formatLbs(qty)} lb
     </span>
   );
 }

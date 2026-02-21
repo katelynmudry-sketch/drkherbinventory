@@ -10,7 +10,7 @@ import { checkHerbAvailabilityByName, AvailabilityInfo, formatAvailabilityMessag
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { correctHerbName, getHerbSuggestions } from '@/lib/herbCorrection';
+import { getHerbSuggestions, scanForHerbs } from '@/lib/herbCorrection';
 import { supabase } from '@/integrations/supabase/client';
 
 type CommandType = 'add' | 'remove' | 'change';
@@ -23,7 +23,7 @@ interface ParsedCommand {
 }
 
 export function VoiceHerbAdd() {
-  const { transcript, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
+  const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const { data: existingHerbs } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
@@ -42,11 +42,11 @@ export function VoiceHerbAdd() {
   useEffect(() => {
     if (transcript && transcript !== lastTranscript && !isListening) {
       setLastTranscript(transcript);
-      const parsed = parseVoiceCommand(transcript);
+      const parsed = parseVoiceCommand(transcript, alternatives);
       setParsedCommand(parsed);
       setHerbAvailability({});
     }
-  }, [transcript, isListening, lastTranscript]);
+  }, [transcript, alternatives, isListening, lastTranscript]);
 
   // Check availability when adding to clinic as low/out
   useEffect(() => {
@@ -89,59 +89,89 @@ export function VoiceHerbAdd() {
     checkAvailability();
   }, [parsedCommand]);
 
-  const parseVoiceCommand = (command: string): ParsedCommand => {
+  const parseVoiceCommand = (command: string, alts: string[] = []): ParsedCommand => {
     const text = command.toLowerCase();
-    
-    // Detect command type (add, remove, or change)
+
+    // --- Command type detection ---
     let type: CommandType = 'add';
-    if (text.includes('remove') || text.includes('delete') || text.includes('take out')) {
+    if (/\b(remove|delete|take out)\b/.test(text)) {
       type = 'remove';
-    } else if (text.includes('change') || text.includes('set') || text.includes('mark') || text.includes('update')) {
+    } else if (/\b(change|set|mark|update)\b/.test(text)) {
       type = 'change';
     }
-    
-    // Detect explicit location keywords
+
+    // --- Location detection ---
     let explicitLocation: InventoryLocation | null = null;
-    if (text.includes('backstock') || text.includes('back stock')) {
+    if (/\b(backstock|back stock)\b/.test(text)) {
       explicitLocation = 'backstock';
-    } else if (text.includes('tincture')) {
+    } else if (/\btincture\b/.test(text)) {
       explicitLocation = 'tincture';
-    } else if (text.includes('clinic')) {
+    } else if (/\bclinic\b/.test(text)) {
       explicitLocation = 'clinic';
-    } else if (text.includes('bulk')) {
+    } else if (/\bbulk\b/.test(text)) {
       explicitLocation = 'bulk';
     }
-    
-    // Detect status (relevant for add and change commands)
+
+    // --- Status detection ---
     let status: InventoryStatus | null = null;
-    if (text.includes('full')) {
+    if (/\bfull\b/.test(text)) {
       status = 'full';
-    } else if (text.includes('low')) {
+    } else if (/\blow\b/.test(text)) {
       status = 'low';
-    } else if (text.includes('out') || text.includes('empty')) {
+    } else if (/\b(out|empty)\b/.test(text)) {
       status = 'out';
     }
-    
-    // Determine location: if no explicit location, "low" and "out" default to clinic
-    // For change commands with tincture, default to tincture location
-    let location: InventoryLocation | null = explicitLocation;
-    if (!explicitLocation && (status === 'low' || status === 'out')) {
-      location = 'clinic';
+
+    // Default location: low/out → clinic
+    const location: InventoryLocation | null =
+      explicitLocation ?? ((status === 'low' || status === 'out') ? 'clinic' : null);
+
+    // --- Herb extraction via scan-and-match (Option C) ---
+    // Strip known command/structural words but keep everything else as candidate tokens.
+    // This avoids destroying herb names that happen to contain words like "out", "to", "and".
+    const STRIP_WORDS = new Set([
+      'add', 'remove', 'delete', 'change', 'set', 'mark', 'update', 'put',
+      'to', 'from', 'as', 'in', 'into', 'take',
+      'backstock', 'back', 'stock', 'tincture', 'clinic', 'bulk',
+      'full', 'low', 'out', 'empty', 'status',
+      'the', 'a', 'an', 'i', 'my',
+    ]);
+
+    // Tokenize on whitespace and commas; keep "and" as a separator (drop it)
+    const rawTokens = text
+      .replace(/,/g, ' ')
+      .split(/\s+/)
+      .map(t => t.replace(/[^a-z']/g, ''))
+      .filter(t => t.length > 0 && t !== 'and');
+
+    // Attempt herb scan on primary transcript
+    let herbNames = scanForHerbs(rawTokens);
+
+    // If no herbs found in primary, try each Speech API alternative (Option A)
+    if (herbNames.length === 0 && alts.length > 1) {
+      for (const alt of alts.slice(1)) {
+        const altTokens = alt
+          .toLowerCase()
+          .replace(/,/g, ' ')
+          .split(/\s+/)
+          .map(t => t.replace(/[^a-z']/g, ''))
+          .filter(t => t.length > 0 && t !== 'and');
+        const altHerbs = scanForHerbs(altTokens);
+        if (altHerbs.length > 0) {
+          herbNames = altHerbs;
+          break;
+        }
+      }
     }
-    
-    // Extract herb names - remove command words and split by commas or "and"
-    const cleanedText = text
-      .replace(/add to|add|remove from|remove|delete from|delete|take out of|take out|put in|put|change|set|mark|update|to|from|as|backstock|back stock|tincture|clinic|bulk|full|low|out|empty|stock|status/gi, '')
-      .trim();
-    
-    // Split by comma, "and", or multiple spaces
-    const herbNames = cleanedText
-      .split(/,|and|\s{2,}/)
-      .map(name => name.trim())
-      .filter(name => name.length > 1)
-      .map(name => correctHerbName(name)) // Apply smart correction
-      .filter((name): name is string => name !== null); // Drop anything that didn't match a known herb
-    
+
+    // Fallback: if scan still found nothing, try stripping command words then scanning
+    if (herbNames.length === 0) {
+      const strippedTokens = rawTokens.filter(t => !STRIP_WORDS.has(t));
+      if (strippedTokens.length > 0) {
+        herbNames = scanForHerbs(strippedTokens);
+      }
+    }
+
     return { type, location, status, herbNames };
   };
 
