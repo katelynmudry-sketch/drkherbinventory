@@ -65,10 +65,10 @@ export function useInventory(location?: InventoryLocation) {
     },
   });
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates (channel name is unique per location to avoid conflicts)
   useEffect(() => {
     const channel = supabase
-      .channel('inventory-changes')
+      .channel(`inventory-changes-${location ?? 'all'}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'inventory' },
@@ -89,7 +89,7 @@ export function useInventory(location?: InventoryLocation) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, location]);
 
   return query;
 }
@@ -208,6 +208,77 @@ export function useDeleteInventory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+// Batch upsert for bulk stock count mode
+export function useBulkUpsert() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (entries: Array<{
+      herbName: string;
+      quantity: number;
+      status: InventoryStatus;
+      existingId?: string;      // set if herb already has a bulk record
+      herbId?: string;          // set if herb already exists in herbs table
+    }>) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      await Promise.all(entries.map(async (entry) => {
+        let herb_id = entry.herbId;
+
+        // Create herb record if it doesn't exist yet
+        if (!herb_id) {
+          const { data: existing } = await supabase
+            .from('herbs')
+            .select('id')
+            .eq('user_id', user.id)
+            .ilike('name', entry.herbName)
+            .single();
+
+          if (existing) {
+            herb_id = existing.id;
+          } else {
+            const { data: created, error } = await supabase
+              .from('herbs')
+              .insert({ name: entry.herbName, user_id: user.id })
+              .select('id')
+              .single();
+            if (error) throw error;
+            herb_id = created.id;
+          }
+        }
+
+        if (entry.existingId) {
+          // Update existing bulk record
+          const { error } = await supabase
+            .from('inventory')
+            .update({ quantity: entry.quantity, status: entry.status })
+            .eq('id', entry.existingId);
+          if (error) throw error;
+        } else {
+          // Insert new bulk record
+          const { error } = await supabase
+            .from('inventory')
+            .insert({
+              herb_id,
+              location: 'bulk',
+              quantity: entry.quantity,
+              status: entry.status,
+              user_id: user.id,
+              tincture_started_at: null,
+              tincture_ready_at: null,
+            });
+          if (error) throw error;
+        }
+      }));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['herbs'] });
     },
   });
 }
