@@ -49,17 +49,36 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
+  // Cleanup on unmount only
   useEffect(() => {
-    if (!isSupported) return;
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
+
+  const createRecognition = useCallback(() => {
+    if (!isSupported) return null;
+
+    // Abort and discard any existing instance before creating a new one
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.abort();
+      recognitionRef.current = null;
+    }
 
     const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognitionConstructor();
-    recognitionRef.current.continuous = false;
-    recognitionRef.current.interimResults = true;
-    recognitionRef.current.lang = 'en-US';
-    recognitionRef.current.maxAlternatives = 5; // collect up to 5 hypotheses per result
+    const recognition = new SpeechRecognitionConstructor();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 5;
 
-    recognitionRef.current.onresult = (event) => {
+    recognition.onresult = (event) => {
       let finalTranscript = '';
       const finalAlternatives: string[] = [];
 
@@ -83,35 +102,35 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
       }
     };
 
-    recognitionRef.current.onend = () => {
+    recognition.onend = () => {
       setIsListening(false);
     };
 
-    recognitionRef.current.onerror = (event) => {
+    recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
     };
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-    };
+    return recognition;
   }, [isSupported]);
 
   const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening) {
-      setTranscript('');
-      setAlternatives([]);
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
-  }, [isListening]);
+    if (!isSupported || isListening) return;
+
+    const recognition = createRecognition();
+    if (!recognition) return;
+
+    recognitionRef.current = recognition;
+    setTranscript('');
+    setAlternatives([]);
+    recognition.start();
+    setIsListening(true);
+  }, [isListening, isSupported, createRecognition]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
-      setIsListening(false);
+      // isListening will be set to false by the onend handler
     }
   }, [isListening]);
 

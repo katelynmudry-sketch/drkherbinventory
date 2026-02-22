@@ -34,6 +34,7 @@ import {
   useUpdateInventory,
   useDeleteInventory,
   useUpdateHerb,
+  useAddHerb,
   useBulkUpsert,
   getDisplayName,
   Herb,
@@ -66,12 +67,13 @@ function calcBulkStatus(qty: number, lowThreshold: number): 'out' | 'low' | 'ful
 
 export function BulkInventorySection() {
   const { data: inventory = [], isLoading } = useInventory('bulk');
-  const { data: backstockInventory = [] } = useInventory('backstock');
+  const { data: backstockInventory = [] } = useInventory('bulk_backstock');
   const { data: herbs = [] } = useHerbs();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
+  const addHerb = useAddHerb();
 
   const [stockCountMode, setStockCountMode] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -92,6 +94,7 @@ export function BulkInventorySection() {
   const [showLowOnly, setShowLowOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [herbPickerOpen, setHerbPickerOpen] = useState(false);
+  const [herbPickerSearch, setHerbPickerSearch] = useState('');
 
   // Build a lookup: herb_id → backstock inventory item
   const backstockByHerbId = useMemo(() => {
@@ -103,12 +106,22 @@ export function BulkInventorySection() {
   }, [backstockInventory]);
 
   const handleAdd = async () => {
-    if (!selectedHerbId) return;
+    if (!selectedHerbId && !herbPickerSearch.trim()) return;
 
     try {
+      // If no existing herb is selected but user typed a name, create a new herb first
+      let resolvedHerbId = selectedHerbId;
+      if (!resolvedHerbId && herbPickerSearch.trim()) {
+        const newHerb = await addHerb.mutateAsync({ name: herbPickerSearch.trim() });
+        resolvedHerbId = newHerb.id;
+      }
+
+      if (!resolvedHerbId) return;
+
       // Check if this herb already has a bulk record — if so, update it
-      const existingBulk = inventory.find(i => i.herb_id === selectedHerbId);
-      const herbThreshold = selectedHerb?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const existingBulk = inventory.find(i => i.herb_id === resolvedHerbId);
+      const herbRecord = herbs.find(h => h.id === resolvedHerbId);
+      const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
       const bulkStatus = calcBulkStatus(selectedQuantity, herbThreshold);
 
       if (existingBulk) {
@@ -120,7 +133,7 @@ export function BulkInventorySection() {
         });
       } else {
         await addInventory.mutateAsync({
-          herb_id: selectedHerbId,
+          herb_id: resolvedHerbId,
           location: 'bulk',
           status: bulkStatus,
           quantity: selectedQuantity,
@@ -130,7 +143,7 @@ export function BulkInventorySection() {
 
       // Handle backstock
       if (selectedBackstockQty !== null) {
-        const existingBackstock = backstockByHerbId.get(selectedHerbId);
+        const existingBackstock = backstockByHerbId.get(resolvedHerbId);
         const bsStatus = calcBulkStatus(selectedBackstockQty, DEFAULT_LOW_THRESHOLD);
         if (existingBackstock) {
           await updateInventory.mutateAsync({
@@ -140,8 +153,8 @@ export function BulkInventorySection() {
           });
         } else {
           await addInventory.mutateAsync({
-            herb_id: selectedHerbId,
-            location: 'backstock',
+            herb_id: resolvedHerbId,
+            location: 'bulk_backstock',
             status: bsStatus,
             quantity: selectedBackstockQty,
           });
@@ -152,6 +165,7 @@ export function BulkInventorySection() {
       setSelectedQuantity(1);
       setSelectedBackstockQty(null);
       setSelectedNotes('');
+      setHerbPickerSearch('');
       setIsAddDialogOpen(false);
       toast.success(existingBulk ? 'Bulk inventory updated' : 'Herb added to bulk inventory');
     } catch (error) {
@@ -166,6 +180,7 @@ export function BulkInventorySection() {
       setSelectedQuantity(1);
       setSelectedBackstockQty(null);
       setSelectedNotes('');
+      setHerbPickerSearch('');
     }
   };
 
@@ -214,7 +229,7 @@ export function BulkInventorySection() {
         } else {
           await addInventory.mutateAsync({
             herb_id: herbId,
-            location: 'backstock',
+            location: 'bulk_backstock',
             status: calcBulkStatus(editBackstockQty, DEFAULT_LOW_THRESHOLD),
             quantity: editBackstockQty,
           });
@@ -334,47 +349,88 @@ export function BulkInventorySection() {
                         aria-expanded={herbPickerOpen}
                         className="w-full justify-between font-normal"
                       >
-                        {selectedHerb ? getDisplayName(selectedHerb) : "Search or select an herb..."}
+                        {selectedHerb
+                          ? getDisplayName(selectedHerb)
+                          : herbPickerSearch.trim()
+                          ? `"${herbPickerSearch.trim()}" (new herb)`
+                          : "Search or select an herb..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Type to search herbs..." />
-                        <CommandList>
-                          <CommandEmpty>No herb found.</CommandEmpty>
-                          <CommandGroup>
-                            {herbs.map((herb) => {
-                              const existingBulk = bulkByHerbId.get(herb.id);
-                              return (
-                                <CommandItem
-                                  key={herb.id}
-                                  value={[herb.name, herb.common_name, herb.latin_name, herb.pinyin_name].filter(Boolean).join(' ')}
-                                  onSelect={() => {
-                                    setSelectedHerbId(herb.id);
-                                    if (existingBulk) setSelectedQuantity(existingBulk.quantity ?? 1);
-                                    setHerbPickerOpen(false);
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  {getDisplayName(herb)}
-                                  {[herb.common_name, herb.latin_name, herb.pinyin_name]
-                                    .filter((n): n is string => !!n && n !== getDisplayName(herb))
-                                    .map((n, i) => (
-                                      <span key={i} className="ml-1 text-muted-foreground text-xs">({n})</span>
-                                    ))}
-                                  {existingBulk && (
-                                    <span className="ml-auto text-xs text-muted-foreground">{formatLbs(existingBulk.quantity ?? 1)} lb</span>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" side="bottom">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Type to search or add new herb..."
+                          value={herbPickerSearch}
+                          onValueChange={(v) => {
+                            setHerbPickerSearch(v);
+                            // Clear selected herb when user edits the search
+                            if (selectedHerbId) setSelectedHerbId('');
+                          }}
+                        />
+                        <CommandList className="max-h-48 overflow-y-auto">
+                          {(() => {
+                            const q = herbPickerSearch.toLowerCase();
+                            const filtered = herbs.filter(h =>
+                              !q ||
+                              h.name.toLowerCase().includes(q) ||
+                              h.common_name?.toLowerCase().includes(q) ||
+                              h.latin_name?.toLowerCase().includes(q) ||
+                              h.pinyin_name?.toLowerCase().includes(q)
+                            );
+                            return (
+                              <>
+                                {filtered.length === 0 && !herbPickerSearch.trim() && (
+                                  <CommandEmpty>No herbs found.</CommandEmpty>
+                                )}
+                                <CommandGroup>
+                                  {filtered.map((herb) => {
+                                    const existingBulk = bulkByHerbId.get(herb.id);
+                                    return (
+                                      <CommandItem
+                                        key={herb.id}
+                                        value={herb.id}
+                                        onSelect={() => {
+                                          setSelectedHerbId(herb.id);
+                                          setHerbPickerSearch('');
+                                          if (existingBulk) setSelectedQuantity(existingBulk.quantity ?? 1);
+                                          setHerbPickerOpen(false);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        {getDisplayName(herb)}
+                                        {[herb.common_name, herb.latin_name, herb.pinyin_name]
+                                          .filter((n): n is string => !!n && n !== getDisplayName(herb))
+                                          .map((n, i) => (
+                                            <span key={i} className="ml-1 text-muted-foreground text-xs">({n})</span>
+                                          ))}
+                                        {existingBulk && (
+                                          <span className="ml-auto text-xs text-muted-foreground">{formatLbs(existingBulk.quantity ?? 1)} lb</span>
+                                        )}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                  {herbPickerSearch.trim() && filtered.every(h => h.name.toLowerCase() !== herbPickerSearch.toLowerCase()) && (
+                                    <CommandItem
+                                      value="__create__"
+                                      onSelect={() => {
+                                        setSelectedHerbId('');
+                                        setHerbPickerOpen(false);
+                                      }}
+                                    >
+                                      <Plus className="mr-2 h-4 w-4 text-primary" />
+                                      <span>Create <strong>"{herbPickerSearch.trim()}"</strong> as new herb</span>
+                                    </CommandItem>
                                   )}
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
+                                </CommandGroup>
+                              </>
+                            );
+                          })()}
                         </CommandList>
                       </Command>
                     </PopoverContent>
@@ -447,9 +503,15 @@ export function BulkInventorySection() {
                 <Button
                   className="w-full"
                   onClick={handleAdd}
-                  disabled={!selectedHerbId || addInventory.isPending || updateInventory.isPending}
+                  disabled={(!selectedHerbId && !herbPickerSearch.trim()) || addInventory.isPending || updateInventory.isPending || addHerb.isPending}
                 >
-                  {(addInventory.isPending || updateInventory.isPending) ? 'Saving...' : selectedHerbExistingBulk ? 'Update Bulk Inventory' : 'Add to Bulk Inventory'}
+                  {(addInventory.isPending || updateInventory.isPending || addHerb.isPending)
+                    ? 'Saving...'
+                    : selectedHerbExistingBulk
+                    ? 'Update Bulk Inventory'
+                    : !selectedHerbId && herbPickerSearch.trim()
+                    ? `Add "${herbPickerSearch.trim()}" to Bulk`
+                    : 'Add to Bulk Inventory'}
                 </Button>
               </div>
             </DialogContent>
@@ -967,7 +1029,7 @@ function BulkStockCountView({
         if (existingBackstock) {
           await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
         } else if (herbRecord) {
-          await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'backstock', quantity: bsQty, status: bsStatus });
+          await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'bulk_backstock', quantity: bsQty, status: bsStatus });
         }
       } catch {
         backstockErrors++;

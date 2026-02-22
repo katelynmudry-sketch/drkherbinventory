@@ -333,9 +333,12 @@ function InventoryItemRow({
     <div
       className={cn(
         "rounded-lg border p-3 transition-colors",
-        item.status === 'full' && "border-green-500/30 bg-green-500/5",
-        item.status === 'low' && "border-yellow-500/30 bg-yellow-500/5",
-        item.status === 'out' && "border-red-500/30 bg-red-500/5"
+        // Backstock is always green — presence in the list means it's in stock
+        location === 'backstock'
+          ? "border-green-500/30 bg-green-500/5"
+          : item.status === 'full' ? "border-green-500/30 bg-green-500/5"
+          : item.status === 'low' ? "border-yellow-500/30 bg-yellow-500/5"
+          : "border-red-500/30 bg-red-500/5"
       )}
     >
       {/* Row 1: Name and action buttons */}
@@ -399,7 +402,7 @@ function InventoryItemRow({
             </>
           ) : (
             <>
-              <StatusBadge status={item.status} />
+              <StatusBadge status={item.status} location={location} />
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onStartEdit}>
                 <Edit2 className="h-4 w-4 text-muted-foreground" />
               </Button>
@@ -459,7 +462,15 @@ function InventoryItemRow({
   );
 }
 
-function StatusBadge({ status }: { status: InventoryStatus }) {
+function StatusBadge({ status, location }: { status: InventoryStatus; location?: InventoryLocation }) {
+  // Backstock is binary: either it's there (yes) or it's not tracked here
+  if (location === 'backstock') {
+    return (
+      <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-green-500/20 text-green-700 dark:text-green-400">
+        Yes
+      </span>
+    );
+  }
   return (
     <span
       className={cn(
