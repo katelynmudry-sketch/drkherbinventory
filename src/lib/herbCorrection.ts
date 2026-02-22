@@ -725,8 +725,9 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-// Find the best matching herb from the list
-export function findBestHerbMatch(input: string, threshold = 0.6): string | null {
+// Find the best matching herb from the list.
+// extraNames: additional searchable name strings derived from DB herb records (latin, pinyin, common)
+export function findBestHerbMatch(input: string, threshold = 0.6, extraNames: string[] = []): string | null {
   const normalized = input.toLowerCase().trim();
 
   // 1. Exact correction map lookup
@@ -764,11 +765,13 @@ export function findBestHerbMatch(input: string, threshold = 0.6): string | null
     }
   }
 
-  // 4. Fuzzy (Levenshtein) match against herb list
+  // 4. Fuzzy (Levenshtein) match against herb list + extra DB-sourced names
   let bestMatch: string | null = null;
   let bestScore = 0;
 
-  for (const herb of HERB_LIST) {
+  const allCandidates = [...HERB_LIST, ...extraNames];
+
+  for (const herb of allCandidates) {
     const herbLower = herb.toLowerCase();
 
     // Exact match
@@ -802,9 +805,9 @@ export function correctHerbName(input: string): string | null {
 
 // Try to match all alternatives from the Speech API, return the best herb found
 // across all hypotheses. Used by the parser to pick the best transcription.
-export function findBestHerbMatchFromAlternatives(alternatives: string[]): string | null {
+export function findBestHerbMatchFromAlternatives(alternatives: string[], extraNames: string[] = []): string | null {
   for (const alt of alternatives) {
-    const match = findBestHerbMatch(alt);
+    const match = findBestHerbMatch(alt, 0.6, extraNames);
     if (match) return match;
   }
   return null;
@@ -813,7 +816,7 @@ export function findBestHerbMatchFromAlternatives(alternatives: string[]): strin
 // Scan-and-match: given a sequence of tokens (words) from the transcript,
 // try every window of 1-4 consecutive tokens and return all matched herb names
 // in the order they appear. Overlapping matches use the longest one.
-export function scanForHerbs(tokens: string[]): string[] {
+export function scanForHerbs(tokens: string[], extraNames: string[] = []): string[] {
   const found: string[] = [];
   const usedIndices = new Set<number>();
 
@@ -824,7 +827,7 @@ export function scanForHerbs(tokens: string[]): string[] {
       if ([...Array(windowSize)].some((_, k) => usedIndices.has(start + k))) continue;
 
       const phrase = tokens.slice(start, start + windowSize).join(' ');
-      const match = findBestHerbMatch(phrase, 0.65);
+      const match = findBestHerbMatch(phrase, 0.65, extraNames);
       if (match) {
         found.push({ match, start, end: start + windowSize - 1 } as any);
         for (let k = 0; k < windowSize; k++) usedIndices.add(start + k);
@@ -838,14 +841,16 @@ export function scanForHerbs(tokens: string[]): string[] {
     .map(f => f.match);
 }
 
-// Get suggestions for autocomplete
-export function getHerbSuggestions(input: string, limit = 5): string[] {
+// Get suggestions for autocomplete, also searching across extra DB-sourced alternate names
+export function getHerbSuggestions(input: string, limit = 5, extraNames: string[] = []): string[] {
   if (!input || input.length < 2) return [];
 
   const normalized = input.toLowerCase().trim();
   const suggestions: { herb: string; score: number }[] = [];
 
-  for (const herb of HERB_LIST) {
+  const allCandidates = [...HERB_LIST, ...extraNames];
+
+  for (const herb of allCandidates) {
     const herbLower = herb.toLowerCase();
 
     if (herbLower.startsWith(normalized)) {
@@ -866,4 +871,25 @@ export function getHerbSuggestions(input: string, limit = 5): string[] {
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(s => s.herb);
+}
+
+// Build a deduplicated list of all alternate name strings from DB herb records.
+// Returns non-null alternate names (common, latin, pinyin) that aren't already in HERB_LIST.
+// Pass the result as `extraNames` to findBestHerbMatch / scanForHerbs / getHerbSuggestions.
+export function buildExtraNamesFromHerbs(herbs: Array<{
+  name: string;
+  common_name: string | null;
+  latin_name: string | null;
+  pinyin_name: string | null;
+}>): string[] {
+  const herbListSet = new Set(HERB_LIST.map(h => h.toLowerCase()));
+  const extras = new Set<string>();
+  for (const herb of herbs) {
+    for (const n of [herb.common_name, herb.latin_name, herb.pinyin_name]) {
+      if (n && !herbListSet.has(n.toLowerCase())) {
+        extras.add(n);
+      }
+    }
+  }
+  return Array.from(extras);
 }

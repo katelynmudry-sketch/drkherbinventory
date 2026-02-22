@@ -24,6 +24,7 @@ import {
   InventoryLocation,
   InventoryStatus,
   InventoryItem,
+  getDisplayName,
 } from '@/hooks/useInventory';
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
@@ -147,7 +148,9 @@ export function InventorySection({ location, title, icon, description, searchQue
         const query = searchQuery.toLowerCase();
         const matchesSearch = 
           item.herbs?.name?.toLowerCase().includes(query) ||
-          item.herbs?.common_name?.toLowerCase().includes(query);
+          item.herbs?.common_name?.toLowerCase().includes(query) ||
+          item.herbs?.latin_name?.toLowerCase().includes(query) ||
+          item.herbs?.pinyin_name?.toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
       // Apply "out only" filter for clinic
@@ -347,10 +350,15 @@ function InventoryItemRow({
             />
           ) : (
             <>
-              <p className="font-medium truncate">{item.herbs?.name}</p>
-              {item.herbs?.common_name && (
-                <p className="text-xs text-muted-foreground truncate">{item.herbs.common_name}</p>
-              )}
+              <p className="font-medium truncate">{item.herbs ? getDisplayName(item.herbs) : ''}</p>
+              {item.herbs && (() => {
+                const display = getDisplayName(item.herbs);
+                const alts = [item.herbs.name, item.herbs.common_name, item.herbs.latin_name, item.herbs.pinyin_name]
+                  .filter((n): n is string => !!n && n !== display);
+                return alts.length > 0 ? (
+                  <p className="text-xs text-muted-foreground truncate">{alts.join(' · ')}</p>
+                ) : null;
+              })()}
             </>
           )}
           {location === 'tincture' && readyDate && !isEditing && (

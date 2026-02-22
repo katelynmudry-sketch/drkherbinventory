@@ -10,9 +10,19 @@ export interface Herb {
   user_id: string;
   name: string;
   common_name: string | null;
+  latin_name: string | null;
+  pinyin_name: string | null;
+  preferred_name: 'common' | 'latin' | 'pinyin' | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export function getDisplayName(herb: Herb): string {
+  if (herb.preferred_name === 'common' && herb.common_name) return herb.common_name;
+  if (herb.preferred_name === 'latin' && herb.latin_name) return herb.latin_name;
+  if (herb.preferred_name === 'pinyin' && herb.pinyin_name) return herb.pinyin_name;
+  return herb.name;
 }
 
 export interface InventoryItem {
@@ -98,7 +108,7 @@ export function useAddHerb() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (herb: { name: string; common_name?: string; notes?: string }) => {
+    mutationFn: async (herb: { name: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin'; notes?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       
@@ -120,7 +130,7 @@ export function useUpdateHerb() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; notes?: string }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin' | null; notes?: string }) => {
       const { data, error } = await supabase
         .from('herbs')
         .update(updates)
@@ -227,43 +237,40 @@ export function useBulkUpsert() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      await Promise.all(entries.map(async (entry) => {
-        let herb_id = entry.herbId;
+      // Process in small batches to avoid hitting Supabase connection limits
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        const batch = entries.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (entry) => {
+          let herb_id = entry.herbId;
 
-        // Create herb record if it doesn't exist yet
-        if (!herb_id) {
-          const { data: existing } = await supabase
-            .from('herbs')
-            .select('id')
-            .eq('user_id', user.id)
-            .ilike('name', entry.herbName)
-            .single();
-
-          if (existing) {
-            herb_id = existing.id;
-          } else {
-            const { data: created, error } = await supabase
+          // Create herb record if it doesn't exist yet
+          if (!herb_id) {
+            const { data: existing } = await supabase
               .from('herbs')
-              .insert({ name: entry.herbName, user_id: user.id })
               .select('id')
+              .eq('user_id', user.id)
+              .ilike('name', entry.herbName)
               .single();
-            if (error) throw error;
-            herb_id = created.id;
-          }
-        }
 
-        if (entry.existingId) {
-          // Update existing bulk record
+            if (existing) {
+              herb_id = existing.id;
+            } else {
+              const { data: created, error } = await supabase
+                .from('herbs')
+                .insert({ name: entry.herbName, user_id: user.id })
+                .select('id')
+                .single();
+              if (error) throw error;
+              herb_id = created.id;
+            }
+          }
+
+          // Upsert — safe whether or not a record already exists
           const { error } = await supabase
             .from('inventory')
-            .update({ quantity: entry.quantity, status: entry.status })
-            .eq('id', entry.existingId);
-          if (error) throw error;
-        } else {
-          // Insert new bulk record
-          const { error } = await supabase
-            .from('inventory')
-            .insert({
+            .upsert({
+              ...(entry.existingId ? { id: entry.existingId } : {}),
               herb_id,
               location: 'bulk',
               quantity: entry.quantity,
@@ -271,10 +278,10 @@ export function useBulkUpsert() {
               user_id: user.id,
               tincture_started_at: null,
               tincture_ready_at: null,
-            });
+            }, { onConflict: 'herb_id,location' });
           if (error) throw error;
-        }
-      }));
+        }));
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -289,7 +296,7 @@ export function useSearchInventory() {
       const { data, error } = await supabase
         .from('inventory')
         .select('*, herbs!inner(*)')
-        .or(`name.ilike.%${searchTerm}%,common_name.ilike.%${searchTerm}%`, { referencedTable: 'herbs' });
+        .or(`name.ilike.%${searchTerm}%,common_name.ilike.%${searchTerm}%,latin_name.ilike.%${searchTerm}%,pinyin_name.ilike.%${searchTerm}%`, { referencedTable: 'herbs' });
       if (error) throw error;
       return data as InventoryItem[];
     },

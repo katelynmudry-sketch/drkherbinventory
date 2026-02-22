@@ -8,10 +8,14 @@
  *   scripts/pb-import.sql  (review this, then run in Supabase SQL Editor)
  */
 
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { HERB_LIST, findBestHerbMatch } from '../src/lib/herbCorrection';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const XLSX_PATH = path.resolve(__dirname, '../Supplier info/Pacificbotanicals Master Pricing List 10-17-2025.xlsx');
 const OUTPUT_PATH = path.resolve(__dirname, 'pb-import.sql');

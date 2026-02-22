@@ -19,8 +19,11 @@ export type Database = {
           common_name: string | null
           created_at: string
           id: string
+          latin_name: string | null
           name: string
           notes: string | null
+          pinyin_name: string | null
+          preferred_name: 'common' | 'latin' | 'pinyin' | null
           updated_at: string
           user_id: string
         }
@@ -28,8 +31,11 @@ export type Database = {
           common_name?: string | null
           created_at?: string
           id?: string
+          latin_name?: string | null
           name: string
           notes?: string | null
+          pinyin_name?: string | null
+          preferred_name?: 'common' | 'latin' | 'pinyin' | null
           updated_at?: string
           user_id: string
         }
@@ -37,8 +43,11 @@ export type Database = {
           common_name?: string | null
           created_at?: string
           id?: string
+          latin_name?: string | null
           name?: string
           notes?: string | null
+          pinyin_name?: string | null
+          preferred_name?: 'common' | 'latin' | 'pinyin' | null
           updated_at?: string
           user_id?: string
         }

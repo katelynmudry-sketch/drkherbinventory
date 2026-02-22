@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Mic, MicOff, Plus, Volume2, Check, X, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { checkHerbAvailabilityByName, AvailabilityInfo, formatAvailabilityMessag
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { getHerbSuggestions, scanForHerbs } from '@/lib/herbCorrection';
+import { getHerbSuggestions, scanForHerbs, buildExtraNamesFromHerbs } from '@/lib/herbCorrection';
 import { supabase } from '@/integrations/supabase/client';
 
 type CommandType = 'add' | 'remove' | 'change';
@@ -38,15 +38,21 @@ export function VoiceHerbAdd() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [herbAvailability, setHerbAvailability] = useState<Record<string, AvailabilityInfo[]>>({});
 
+  // Extra searchable names derived from DB herb records (latin, pinyin, common)
+  const extraNames = useMemo(
+    () => buildExtraNamesFromHerbs(existingHerbs ?? []),
+    [existingHerbs]
+  );
+
   // Parse transcript when voice input stops
   useEffect(() => {
     if (transcript && transcript !== lastTranscript && !isListening) {
       setLastTranscript(transcript);
-      const parsed = parseVoiceCommand(transcript, alternatives);
+      const parsed = parseVoiceCommand(transcript, alternatives, extraNames);
       setParsedCommand(parsed);
       setHerbAvailability({});
     }
-  }, [transcript, alternatives, isListening, lastTranscript]);
+  }, [transcript, alternatives, isListening, lastTranscript, extraNames]);
 
   // Check availability when adding to clinic as low/out
   useEffect(() => {
@@ -89,7 +95,7 @@ export function VoiceHerbAdd() {
     checkAvailability();
   }, [parsedCommand]);
 
-  const parseVoiceCommand = (command: string, alts: string[] = []): ParsedCommand => {
+  const parseVoiceCommand = (command: string, alts: string[] = [], extra: string[] = []): ParsedCommand => {
     const text = command.toLowerCase();
 
     // --- Command type detection ---
@@ -145,7 +151,7 @@ export function VoiceHerbAdd() {
       .filter(t => t.length > 0 && t !== 'and');
 
     // Attempt herb scan on primary transcript
-    let herbNames = scanForHerbs(rawTokens);
+    let herbNames = scanForHerbs(rawTokens, extra);
 
     // If no herbs found in primary, try each Speech API alternative (Option A)
     if (herbNames.length === 0 && alts.length > 1) {
@@ -156,7 +162,7 @@ export function VoiceHerbAdd() {
           .split(/\s+/)
           .map(t => t.replace(/[^a-z']/g, ''))
           .filter(t => t.length > 0 && t !== 'and');
-        const altHerbs = scanForHerbs(altTokens);
+        const altHerbs = scanForHerbs(altTokens, extra);
         if (altHerbs.length > 0) {
           herbNames = altHerbs;
           break;
@@ -168,7 +174,7 @@ export function VoiceHerbAdd() {
     if (herbNames.length === 0) {
       const strippedTokens = rawTokens.filter(t => !STRIP_WORDS.has(t));
       if (strippedTokens.length > 0) {
-        herbNames = scanForHerbs(strippedTokens);
+        herbNames = scanForHerbs(strippedTokens, extra);
       }
     }
 
@@ -472,7 +478,7 @@ export function VoiceHerbAdd() {
                         value={editValue}
                         onChange={(e) => {
                           setEditValue(e.target.value);
-                          setSuggestions(getHerbSuggestions(e.target.value));
+                          setSuggestions(getHerbSuggestions(e.target.value, 5, extraNames));
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') { handleSaveEdit(); setSuggestions([]); }
