@@ -44,9 +44,9 @@ import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 
 // Standard lb increments available in the UI
-const LB_OPTIONS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 5];
+const LB_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 // Compact subset shown as tap buttons in stock count mode
-const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 2, 3];
+const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
 const LOW_STOCK_THRESHOLD = 0.5; // lbs
 const NONE_VALUE = '__none__';
 
