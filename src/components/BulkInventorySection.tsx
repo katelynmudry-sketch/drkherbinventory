@@ -218,7 +218,7 @@ export function BulkInventorySection() {
             item.herbs?.common_name?.toLowerCase().includes(query);
           if (!matchesSearch) return false;
         }
-        if (showLowOnly && (item.quantity ?? 1) > LOW_STOCK_THRESHOLD) {
+        if (showLowOnly && (item.quantity ?? 0) > LOW_STOCK_THRESHOLD) {
           return false;
         }
         return true;
@@ -232,7 +232,7 @@ export function BulkInventorySection() {
       });
   }, [inventory, searchQuery, showLowOnly]);
 
-  const lowCount = inventory.filter(item => (item.quantity ?? 1) <= LOW_STOCK_THRESHOLD).length;
+  const lowCount = inventory.filter(item => (item.quantity ?? 0) <= LOW_STOCK_THRESHOLD).length;
   const totalCount = inventory.length;
 
   const selectedHerb = herbs.find(h => h.id === selectedHerbId);
