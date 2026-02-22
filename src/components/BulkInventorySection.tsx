@@ -873,32 +873,29 @@ function BulkStockCountView({
   const updateInventory = useUpdateInventory();
   const [search, setSearch] = useState('');
 
-  // herbName → existing bulk record (read-only reference for displaying current qty)
-  const existingByName = useMemo(() => {
+  // herb_id → existing bulk inventory item
+  const existingById = useMemo(() => {
     const map = new Map<string, InventoryItem>();
-    for (const item of inventory) {
-      if (item.herbs?.name) map.set(item.herbs.name, item);
-    }
+    for (const item of inventory) map.set(item.herb_id, item);
     return map;
   }, [inventory]);
 
-  // herbName → existing backstock record
-  const backstockByName = useMemo(() => {
+  // herb_id → existing bulk_backstock inventory item
+  const backstockById = useMemo(() => {
     const map = new Map<string, InventoryItem>();
-    for (const item of backstockInventory) {
-      if (item.herbs?.name) map.set(item.herbs.name, item);
-    }
+    for (const item of backstockInventory) map.set(item.herb_id, item);
     return map;
   }, [backstockInventory]);
 
-  // herbName → herb record (for herb_id)
+  // herbName → herb record — keyed by herbs.name (primary name, case-sensitive from DB)
   const herbByName = useMemo(() => {
     const map = new Map<string, Herb>();
     for (const h of herbs) map.set(h.name, h);
     return map;
   }, [herbs]);
 
-  // Full list of herb names to show: HERB_LIST + any DB herbs not already in it
+  // Full list of herb names for display: HERB_LIST + any bulk inventory herbs not in it
+  // Uses herbs.name as the canonical key throughout
   const allHerbNames = useMemo(() => {
     const herbListSet = new Set(HERB_LIST);
     const extra: string[] = [];
@@ -909,27 +906,22 @@ function BulkStockCountView({
     return [...HERB_LIST, ...extra.sort((a, b) => a.localeCompare(b))];
   }, [inventory]);
 
-  // herbName → selected bulk qty — pre-filled from DB so current values are visible
-  const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(
-    () => new Map()
-  );
-
-  // herbName → selected backstock qty — pre-filled from DB
-  const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(
-    () => new Map()
-  );
-
-  // Sync selections from DB whenever inventory data changes.
-  // Only overwrites entries the user hasn't manually changed (i.e. still at their DB value or unset).
+  // herbName → selected bulk qty (keyed by herbs.name, looked up via herbByName → herb_id → existingById)
+  const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => new Map());
+  // herbName → selected backstock qty
+  const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(() => new Map());
+  // Track which herbs the user has manually tapped so DB sync doesn't overwrite them
   const [userTouched, setUserTouched] = useState<Set<string>>(() => new Set());
   const [userTouchedBs, setUserTouchedBs] = useState<Set<string>>(() => new Set());
 
+  // Sync bulk selections from DB. Looks up by herb_id to avoid name-mismatch bugs.
   useEffect(() => {
     setSelections(prev => {
       const next = new Map(prev);
       for (const name of allHerbNames) {
-        if (userTouched.has(name)) continue; // user already changed this — don't overwrite
-        const existing = existingByName.get(name);
+        if (userTouched.has(name)) continue;
+        const herb = herbByName.get(name);
+        const existing = herb ? existingById.get(herb.id) : undefined;
         if (existing) {
           const qty = Number(existing.quantity ?? 0);
           next.set(name, qty === 0 ? 'out' : qty);
@@ -939,23 +931,25 @@ function BulkStockCountView({
       }
       return next;
     });
-  }, [existingByName, allHerbNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existingById, allHerbNames, herbByName]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync backstock selections from DB, also by herb_id.
   useEffect(() => {
     setBackstockSelections(prev => {
       const next = new Map(prev);
       for (const name of allHerbNames) {
         if (userTouchedBs.has(name)) continue;
-        const existing = backstockByName.get(name);
+        const herb = herbByName.get(name);
+        const existing = herb ? backstockById.get(herb.id) : undefined;
         if (existing) {
-          next.set(name, existing.quantity != null ? Number(existing.quantity) : null);
+          next.set(name, Number(existing.quantity ?? 0) || null);
         } else if (!next.has(name)) {
           next.set(name, null);
         }
       }
       return next;
     });
-  }, [backstockByName, allHerbNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [backstockById, allHerbNames, herbByName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (herbName: string, value: number | 'out') => {
     setUserTouched(prev => new Set(prev).add(herbName));
@@ -975,10 +969,11 @@ function BulkStockCountView({
     });
   };
 
-  // Count how many bulk selections differ from the DB value
+  // Count changed bulk selections (compare against DB via herb_id)
   const changedCount = Array.from(selections.entries()).filter(([name, sel]) => {
     if (sel === null) return false;
-    const existing = existingByName.get(name);
+    const herb = herbByName.get(name);
+    const existing = herb ? existingById.get(herb.id) : undefined;
     const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
     const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
     return sel !== dbVal;
@@ -1003,23 +998,22 @@ function BulkStockCountView({
     const entries: Parameters<typeof bulkUpsert.mutateAsync>[0] = [];
     for (const [herbName, sel] of selections.entries()) {
       if (sel === null) continue;
-      // Only save if the value changed from what's in the DB
-      const existing = existingByName.get(herbName);
+      const herb = herbByName.get(herbName);
+      const existing = herb ? existingById.get(herb.id) : undefined;
       const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
       const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
       if (sel === dbVal) continue;
       const quantity = sel === 'out' ? 0 : sel;
-      const herbRecord = herbByName.get(herbName);
-      const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const herbThreshold = Number(herb?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
       const status = calcBulkStatus(quantity, herbThreshold);
-      entries.push({ herbName, quantity, status, herbId: herbRecord?.id });
+      entries.push({ herbName, quantity, status, herbId: herb?.id });
     }
 
-    // Check backstock for changes too (for the "nothing changed" guard)
     const bsEntriesToSave: Array<{ herbName: string; bsQty: number }> = [];
     for (const [herbName, bsQty] of backstockSelections.entries()) {
       if (bsQty === null) continue;
-      const existing = backstockByName.get(herbName);
+      const herb = herbByName.get(herbName);
+      const existing = herb ? backstockById.get(herb.id) : undefined;
       const dbBsVal = existing?.quantity != null ? Number(existing.quantity) : null;
       if (bsQty === dbBsVal) continue;
       bsEntriesToSave.push({ herbName, bsQty });
@@ -1030,7 +1024,6 @@ function BulkStockCountView({
       return;
     }
 
-    // Step 1: Save bulk quantities (critical path)
     let bulkSaveError: unknown = null;
     try {
       await bulkUpsert.mutateAsync(entries);
@@ -1040,30 +1033,27 @@ function BulkStockCountView({
 
     if (bulkSaveError !== null) {
       const err = bulkSaveError as { message?: string };
-      const msg = err?.message ?? 'Save failed';
       console.error('Stock count bulk save error:', bulkSaveError);
-      toast.error(msg);
+      toast.error(err?.message ?? 'Save failed');
       return;
     }
 
-    // Step 2: Save changed backstock quantities (non-critical — failures are tolerated)
     let backstockErrors = 0;
     for (const { herbName, bsQty } of bsEntriesToSave) {
-      const herbRecord = herbByName.get(herbName);
-      const existingBackstock = backstockByName.get(herbName);
+      const herb = herbByName.get(herbName);
+      const existingBackstock = herb ? backstockById.get(herb.id) : undefined;
       const bsStatus = calcBulkStatus(bsQty, DEFAULT_LOW_THRESHOLD);
       try {
         if (existingBackstock) {
           await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
-        } else if (herbRecord) {
-          await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'bulk_backstock', quantity: bsQty, status: bsStatus });
+        } else if (herb) {
+          await addInventory.mutateAsync({ herb_id: herb.id, location: 'bulk_backstock', quantity: bsQty, status: bsStatus });
         }
       } catch {
         backstockErrors++;
       }
     }
 
-    // Step 3: Stay on stock count page, show brief confirmation
     const totalSaved = entries.length + bsEntriesToSave.length - backstockErrors;
     toast.success(`Saved ${totalSaved} change${totalSaved !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`, { duration: 2000 });
   };
