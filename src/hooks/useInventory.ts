@@ -266,28 +266,20 @@ export function useBulkUpsert() {
             }
           }
 
-          if (entry.existingId) {
-            // Update existing bulk record
-            const { error } = await supabase
-              .from('inventory')
-              .update({ quantity: entry.quantity, status: entry.status })
-              .eq('id', entry.existingId);
-            if (error) throw error;
-          } else {
-            // Insert new bulk record
-            const { error } = await supabase
-              .from('inventory')
-              .insert({
-                herb_id,
-                location: 'bulk',
-                quantity: entry.quantity,
-                status: entry.status,
-                user_id: user.id,
-                tincture_started_at: null,
-                tincture_ready_at: null,
-              });
-            if (error) throw error;
-          }
+          // Upsert — safe whether or not a record already exists
+          const { error } = await supabase
+            .from('inventory')
+            .upsert({
+              ...(entry.existingId ? { id: entry.existingId } : {}),
+              herb_id,
+              location: 'bulk',
+              quantity: entry.quantity,
+              status: entry.status,
+              user_id: user.id,
+              tincture_started_at: null,
+              tincture_ready_at: null,
+            }, { onConflict: 'herb_id,location' });
+          if (error) throw error;
         }));
       }
     },
