@@ -188,24 +188,15 @@ export function BulkInventorySection() {
     try {
       const currentHerb = herbs.find(h => h.id === herbId);
       if (currentHerb) {
-        const anyFieldChanged =
-          (newHerbName.trim() && currentHerb.name !== newHerbName.trim()) ||
-          (editCommonName.trim() || null) !== currentHerb.common_name ||
-          (editLatinName.trim() || null) !== currentHerb.latin_name ||
-          (editPinyinName.trim() || null) !== currentHerb.pinyin_name ||
-          editPreferredName !== currentHerb.preferred_name ||
-          editLowThreshold !== currentHerb.low_threshold_lb;
-        if (anyFieldChanged) {
-          await updateHerb.mutateAsync({
-            id: herbId,
-            name: newHerbName.trim() || currentHerb.name,
-            common_name: editCommonName.trim() || null,
-            latin_name: editLatinName.trim() || null,
-            pinyin_name: editPinyinName.trim() || null,
-            preferred_name: editPreferredName,
-            low_threshold_lb: editLowThreshold,
-          });
-        }
+        await updateHerb.mutateAsync({
+          id: herbId,
+          name: newHerbName.trim() || currentHerb.name,
+          common_name: editCommonName.trim() || null,
+          latin_name: editLatinName.trim() || null,
+          pinyin_name: editPinyinName.trim() || null,
+          preferred_name: editPreferredName,
+          low_threshold_lb: editLowThreshold,
+        });
       }
 
       // Update bulk record using the herb's low threshold
@@ -268,13 +259,13 @@ export function BulkInventorySection() {
           if (!matchesSearch) return false;
         }
         if (showLowOnly) {
-          const threshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
-          if ((item.quantity ?? 0) > threshold) return false;
+          const threshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+          if (Number(item.quantity ?? 0) > threshold) return false;
         }
         return true;
       })
       .sort((a, b) => {
-        const qtyDiff = (a.quantity ?? 1) - (b.quantity ?? 1);
+        const qtyDiff = Number(a.quantity ?? 1) - Number(b.quantity ?? 1);
         if (qtyDiff !== 0) return qtyDiff;
         const nameA = a.herbs?.name?.toLowerCase() || '';
         const nameB = b.herbs?.name?.toLowerCase() || '';
@@ -283,8 +274,8 @@ export function BulkInventorySection() {
   }, [inventory, searchQuery, showLowOnly]);
 
   const lowCount = inventory.filter(item => {
-    const threshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
-    return (item.quantity ?? 0) <= threshold;
+    const threshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+    return Number(item.quantity ?? 0) <= threshold;
   }).length;
   const totalCount = inventory.length;
 
@@ -334,11 +325,11 @@ export function BulkInventorySection() {
                 Add Herb
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
+            <DialogContent className="flex flex-col max-h-[90vh]">
+              <DialogHeader className="shrink-0">
                 <DialogTitle>Add to Bulk Inventory</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 pt-4">
+              <div className="space-y-4 pt-4 overflow-y-auto pr-1">
                 <div className="space-y-2">
                   <Label>Herb</Label>
                   <Popover open={herbPickerOpen} onOpenChange={setHerbPickerOpen}>
@@ -556,7 +547,7 @@ export function BulkInventorySection() {
               <BulkItemCard
                 key={item.id}
                 item={item}
-                backstockQty={backstock?.quantity ?? null}
+                backstockQty={backstock?.quantity != null ? Number(backstock.quantity) : null}
                 isEditing={editingId === item.id}
                 editQuantity={editQuantity}
                 editBackstockQty={editBackstockQty}
@@ -564,8 +555,8 @@ export function BulkInventorySection() {
                 editNotes={editNotes}
                 onStartEdit={() => {
                   setEditingId(item.id);
-                  setEditQuantity(item.quantity ?? 1);
-                  setEditBackstockQty(backstock?.quantity ?? null);
+                  setEditQuantity(Number(item.quantity ?? 1));
+                  setEditBackstockQty(backstock?.quantity != null ? Number(backstock.quantity) : null);
                   setEditHerbName(item.herbs?.name || '');
                   setEditCommonName(item.herbs?.common_name || '');
                   setEditLatinName(item.herbs?.latin_name || '');
@@ -655,8 +646,8 @@ function BulkItemCard({
   onNotesChange,
   onDelete,
 }: BulkItemCardProps) {
-  const qty = item.quantity ?? 1;
-  const herbThreshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+  const qty = Number(item.quantity ?? 1);
+  const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
   const isLow = qty > 0 && qty <= herbThreshold;
   const isOut = qty <= 0;
 
@@ -664,11 +655,11 @@ function BulkItemCard({
     <>
       {/* Edit dialog */}
       <Dialog open={isEditing} onOpenChange={(open) => { if (!open) onCancelEdit(); }}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Edit Bulk Herb</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-2 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label>Primary name</Label>
               <Input
@@ -940,7 +931,7 @@ function BulkStockCountView({
         if (userTouched.has(name)) continue; // user already changed this — don't overwrite
         const existing = existingByName.get(name);
         if (existing) {
-          const qty = existing.quantity ?? 0;
+          const qty = Number(existing.quantity ?? 0);
           next.set(name, qty === 0 ? 'out' : qty);
         } else if (!next.has(name)) {
           next.set(name, null);
@@ -957,7 +948,7 @@ function BulkStockCountView({
         if (userTouchedBs.has(name)) continue;
         const existing = backstockByName.get(name);
         if (existing) {
-          next.set(name, existing.quantity ?? null);
+          next.set(name, existing.quantity != null ? Number(existing.quantity) : null);
         } else if (!next.has(name)) {
           next.set(name, null);
         }
@@ -988,7 +979,8 @@ function BulkStockCountView({
   const changedCount = Array.from(selections.entries()).filter(([name, sel]) => {
     if (sel === null) return false;
     const existing = existingByName.get(name);
-    const dbVal: number | 'out' | null = existing ? (existing.quantity === 0 ? 'out' : existing.quantity) : null;
+    const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
+    const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
     return sel !== dbVal;
   }).length;
 
@@ -1013,9 +1005,8 @@ function BulkStockCountView({
       if (sel === null) continue;
       // Only save if the value changed from what's in the DB
       const existing = existingByName.get(herbName);
-      const dbVal: number | 'out' | null = existing
-        ? (existing.quantity === 0 ? 'out' : existing.quantity)
-        : null;
+      const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
+      const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
       if (sel === dbVal) continue;
       const quantity = sel === 'out' ? 0 : sel;
       const herbRecord = herbByName.get(herbName);
@@ -1029,7 +1020,7 @@ function BulkStockCountView({
     for (const [herbName, bsQty] of backstockSelections.entries()) {
       if (bsQty === null) continue;
       const existing = backstockByName.get(herbName);
-      const dbBsVal = existing ? (existing.quantity ?? null) : null;
+      const dbBsVal = existing?.quantity != null ? Number(existing.quantity) : null;
       if (bsQty === dbBsVal) continue;
       bsEntriesToSave.push({ herbName, bsQty });
     }
