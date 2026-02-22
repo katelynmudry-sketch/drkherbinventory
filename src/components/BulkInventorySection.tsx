@@ -873,34 +873,44 @@ function BulkStockCountView({
       entries.push({ herbName, quantity, status, existingId: existing?.id, herbId: herbRecord?.id });
     }
     if (entries.length === 0) { toast.info('No herbs selected — nothing to save.'); return; }
+
+    // Step 1: Save bulk quantities (critical path)
+    let bulkSaveError: unknown = null;
     try {
       await bulkUpsert.mutateAsync(entries);
-
-      // Save backstock quantities separately (only for herbs we have a record for)
-      let backstockErrors = 0;
-      for (const [herbName, bsQty] of backstockSelections.entries()) {
-        if (bsQty === null) continue;
-        const herbRecord = herbByName.get(herbName);
-        const existingBackstock = backstockByName.get(herbName);
-        const bsStatus = bsQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
-        try {
-          if (existingBackstock) {
-            await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
-          } else if (herbRecord) {
-            await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'backstock', quantity: bsQty, status: bsStatus });
-          }
-        } catch {
-          backstockErrors++;
-        }
-      }
-
-      toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`);
-      onExit();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Save failed';
-      console.error('Stock count save error:', e);
-      toast.error(msg);
+      bulkSaveError = e;
     }
+
+    if (bulkSaveError !== null) {
+      const err = bulkSaveError as { message?: string };
+      const msg = err?.message ?? 'Save failed';
+      console.error('Stock count bulk save error:', bulkSaveError);
+      toast.error(msg);
+      return;
+    }
+
+    // Step 2: Save backstock quantities (non-critical — failures are tolerated)
+    let backstockErrors = 0;
+    for (const [herbName, bsQty] of backstockSelections.entries()) {
+      if (bsQty === null) continue;
+      const herbRecord = herbByName.get(herbName);
+      const existingBackstock = backstockByName.get(herbName);
+      const bsStatus = bsQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+      try {
+        if (existingBackstock) {
+          await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
+        } else if (herbRecord) {
+          await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'backstock', quantity: bsQty, status: bsStatus });
+        }
+      } catch {
+        backstockErrors++;
+      }
+    }
+
+    // Step 3: Always exit on bulk save success
+    toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`);
+    onExit();
   };
 
   return (

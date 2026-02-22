@@ -261,7 +261,7 @@ export function useBulkUpsert() {
                 .insert({ name: entry.herbName, user_id: user.id })
                 .select('id')
                 .single();
-              if (error) throw error;
+              if (error) throw new Error(error.message || 'Failed to create herb');
               herb_id = created.id;
             }
           }
@@ -279,7 +279,7 @@ export function useBulkUpsert() {
               tincture_started_at: null,
               tincture_ready_at: null,
             }, { onConflict: 'herb_id,location' });
-          if (error) throw error;
+          if (error) throw new Error(error.message || 'Failed to save inventory');
         }));
       }
     },
