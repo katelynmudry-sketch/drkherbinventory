@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown, ClipboardList, Archive } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent } from '@/components/ui/card';
@@ -907,32 +907,67 @@ function BulkStockCountView({
     return map;
   }, [herbs]);
 
-  // herbName → selected bulk qty — pre-filled from DB so current values are visible
-  const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => {
-    const initial = new Map<string, number | 'out' | null>();
-    for (const name of HERB_LIST) {
-      const existing = existingByName.get(name);
-      if (existing) {
-        const qty = existing.quantity ?? 0;
-        initial.set(name, qty === 0 ? 'out' : qty);
-      } else {
-        initial.set(name, null);
-      }
+  // Full list of herb names to show: HERB_LIST + any DB herbs not already in it
+  const allHerbNames = useMemo(() => {
+    const herbListSet = new Set(HERB_LIST);
+    const extra: string[] = [];
+    for (const item of inventory) {
+      const name = item.herbs?.name;
+      if (name && !herbListSet.has(name)) extra.push(name);
     }
-    return initial;
-  });
+    return [...HERB_LIST, ...extra.sort((a, b) => a.localeCompare(b))];
+  }, [inventory]);
+
+  // herbName → selected bulk qty — pre-filled from DB so current values are visible
+  const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(
+    () => new Map()
+  );
 
   // herbName → selected backstock qty — pre-filled from DB
-  const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(() => {
-    const initial = new Map<string, number | null>();
-    for (const name of HERB_LIST) {
-      const existing = backstockByName.get(name);
-      initial.set(name, existing ? (existing.quantity ?? null) : null);
-    }
-    return initial;
-  });
+  const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(
+    () => new Map()
+  );
+
+  // Sync selections from DB whenever inventory data changes.
+  // Only overwrites entries the user hasn't manually changed (i.e. still at their DB value or unset).
+  const [userTouched, setUserTouched] = useState<Set<string>>(() => new Set());
+  const [userTouchedBs, setUserTouchedBs] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setSelections(prev => {
+      const next = new Map(prev);
+      for (const name of allHerbNames) {
+        if (userTouched.has(name)) continue; // user already changed this — don't overwrite
+        const existing = existingByName.get(name);
+        if (existing) {
+          const qty = existing.quantity ?? 0;
+          next.set(name, qty === 0 ? 'out' : qty);
+        } else if (!next.has(name)) {
+          next.set(name, null);
+        }
+      }
+      return next;
+    });
+  }, [existingByName, allHerbNames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setBackstockSelections(prev => {
+      const next = new Map(prev);
+      for (const name of allHerbNames) {
+        if (userTouchedBs.has(name)) continue;
+        const existing = backstockByName.get(name);
+        if (existing) {
+          next.set(name, existing.quantity ?? null);
+        } else if (!next.has(name)) {
+          next.set(name, null);
+        }
+      }
+      return next;
+    });
+  }, [backstockByName, allHerbNames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (herbName: string, value: number | 'out') => {
+    setUserTouched(prev => new Set(prev).add(herbName));
     setSelections(prev => {
       const next = new Map(prev);
       next.set(herbName, prev.get(herbName) === value ? null : value);
@@ -941,6 +976,7 @@ function BulkStockCountView({
   };
 
   const toggleBackstock = (herbName: string, value: number) => {
+    setUserTouchedBs(prev => new Set(prev).add(herbName));
     setBackstockSelections(prev => {
       const next = new Map(prev);
       next.set(herbName, prev.get(herbName) === value ? null : value);
@@ -957,9 +993,9 @@ function BulkStockCountView({
   }).length;
 
   const filteredHerbs = useMemo(() => {
-    if (!search.trim()) return HERB_LIST;
+    if (!search.trim()) return allHerbNames;
     const q = search.toLowerCase();
-    return HERB_LIST.filter(h => {
+    return allHerbNames.filter(h => {
       if (h.toLowerCase().includes(q)) return true;
       const dbHerb = herbByName.get(h);
       if (!dbHerb) return false;
@@ -969,7 +1005,7 @@ function BulkStockCountView({
         dbHerb.pinyin_name?.toLowerCase().includes(q)
       );
     });
-  }, [search, herbByName]);
+  }, [search, herbByName, allHerbNames]);
 
   const handleSave = async () => {
     const entries: Parameters<typeof bulkUpsert.mutateAsync>[0] = [];
