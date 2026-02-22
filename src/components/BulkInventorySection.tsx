@@ -743,17 +743,20 @@ function BulkItemCard({
 }
 
 function LbsBadge({ qty }: { qty: number }) {
-  const isLow = qty <= LOW_STOCK_THRESHOLD;
+  const isOut = qty <= 0.25;
+  const isLow = !isOut && qty <= LOW_STOCK_THRESHOLD;
   return (
     <span
       className={cn(
         "rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap",
-        isLow
+        isOut
+          ? "bg-red-500/20 text-red-700 dark:text-red-400"
+          : isLow
           ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400"
           : "bg-green-500/20 text-green-700 dark:text-green-400"
       )}
     >
-      {formatLbs(qty)} lb
+      {isOut ? 'OUT' : `${formatLbs(qty)} lb`}
     </span>
   );
 }
@@ -873,25 +876,25 @@ function BulkStockCountView({
     try {
       await bulkUpsert.mutateAsync(entries);
 
-      // Save backstock quantities separately
+      // Save backstock quantities separately (only for herbs we have a record for)
+      let backstockErrors = 0;
       for (const [herbName, bsQty] of backstockSelections.entries()) {
-        // Only save if bulk was also marked (herb exists in DB) or backstock changed
+        if (bsQty === null) continue;
         const herbRecord = herbByName.get(herbName);
         const existingBackstock = backstockByName.get(herbName);
-        if (bsQty === null) {
-          // No backstock set — skip
-          continue;
-        }
         const bsStatus = bsQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
-        if (existingBackstock) {
-          await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
-        } else if (herbRecord) {
-          await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'backstock', quantity: bsQty, status: bsStatus });
+        try {
+          if (existingBackstock) {
+            await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });
+          } else if (herbRecord) {
+            await addInventory.mutateAsync({ herb_id: herbRecord.id, location: 'backstock', quantity: bsQty, status: bsStatus });
+          }
+        } catch {
+          backstockErrors++;
         }
-        // If no herb record yet, the bulkUpsert above will have created it; skip for now
       }
 
-      toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}`);
+      toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`);
       onExit();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Save failed';
