@@ -820,6 +820,15 @@ function BulkStockCountView({
   const updateInventory = useUpdateInventory();
   const [search, setSearch] = useState('');
 
+  // herbName → existing bulk record (read-only reference for displaying current qty)
+  const existingByName = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of inventory) {
+      if (item.herbs?.name) map.set(item.herbs.name, item);
+    }
+    return map;
+  }, [inventory]);
+
   // herbName → existing backstock record
   const backstockByName = useMemo(() => {
     const map = new Map<string, InventoryItem>();
@@ -836,18 +845,28 @@ function BulkStockCountView({
     return map;
   }, [herbs]);
 
-  // herbName → selected bulk qty (number), 'out', or null (skip/untouched)
-  // Starts all-null — only herbs the user explicitly taps get saved
+  // herbName → selected bulk qty — pre-filled from DB so current values are visible
   const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => {
     const initial = new Map<string, number | 'out' | null>();
-    for (const name of HERB_LIST) initial.set(name, null);
+    for (const name of HERB_LIST) {
+      const existing = existingByName.get(name);
+      if (existing) {
+        const qty = existing.quantity ?? 0;
+        initial.set(name, qty === 0 ? 'out' : qty);
+      } else {
+        initial.set(name, null);
+      }
+    }
     return initial;
   });
 
-  // herbName → selected backstock qty — null means untouched/skip
+  // herbName → selected backstock qty — pre-filled from DB
   const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(() => {
     const initial = new Map<string, number | null>();
-    for (const name of HERB_LIST) initial.set(name, null);
+    for (const name of HERB_LIST) {
+      const existing = backstockByName.get(name);
+      initial.set(name, existing ? (existing.quantity ?? null) : null);
+    }
     return initial;
   });
 
@@ -867,7 +886,13 @@ function BulkStockCountView({
     });
   };
 
-  const markedCount = Array.from(selections.values()).filter(v => v !== null).length;
+  // Count how many bulk selections differ from the DB value
+  const changedCount = Array.from(selections.entries()).filter(([name, sel]) => {
+    if (sel === null) return false;
+    const existing = existingByName.get(name);
+    const dbVal: number | 'out' | null = existing ? (existing.quantity === 0 ? 'out' : existing.quantity) : null;
+    return sel !== dbVal;
+  }).length;
 
   const filteredHerbs = useMemo(() => {
     if (!search.trim()) return HERB_LIST;
@@ -888,13 +913,33 @@ function BulkStockCountView({
     const entries: Parameters<typeof bulkUpsert.mutateAsync>[0] = [];
     for (const [herbName, sel] of selections.entries()) {
       if (sel === null) continue;
+      // Only save if the value changed from what's in the DB
+      const existing = existingByName.get(herbName);
+      const dbVal: number | 'out' | null = existing
+        ? (existing.quantity === 0 ? 'out' : existing.quantity)
+        : null;
+      if (sel === dbVal) continue;
       const quantity = sel === 'out' ? 0 : sel;
       const herbRecord = herbByName.get(herbName);
       const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
       const status = calcBulkStatus(quantity, herbThreshold);
       entries.push({ herbName, quantity, status, herbId: herbRecord?.id });
     }
-    if (entries.length === 0) { toast.info('No herbs selected — nothing to save.'); return; }
+
+    // Check backstock for changes too (for the "nothing changed" guard)
+    const bsEntriesToSave: Array<{ herbName: string; bsQty: number }> = [];
+    for (const [herbName, bsQty] of backstockSelections.entries()) {
+      if (bsQty === null) continue;
+      const existing = backstockByName.get(herbName);
+      const dbBsVal = existing ? (existing.quantity ?? null) : null;
+      if (bsQty === dbBsVal) continue;
+      bsEntriesToSave.push({ herbName, bsQty });
+    }
+
+    if (entries.length === 0 && bsEntriesToSave.length === 0) {
+      toast.info('No changes to save.');
+      return;
+    }
 
     // Step 1: Save bulk quantities (critical path)
     let bulkSaveError: unknown = null;
@@ -912,10 +957,9 @@ function BulkStockCountView({
       return;
     }
 
-    // Step 2: Save backstock quantities (non-critical — failures are tolerated)
+    // Step 2: Save changed backstock quantities (non-critical — failures are tolerated)
     let backstockErrors = 0;
-    for (const [herbName, bsQty] of backstockSelections.entries()) {
-      if (bsQty === null) continue;
+    for (const { herbName, bsQty } of bsEntriesToSave) {
       const herbRecord = herbByName.get(herbName);
       const existingBackstock = backstockByName.get(herbName);
       const bsStatus = calcBulkStatus(bsQty, DEFAULT_LOW_THRESHOLD);
@@ -930,10 +974,9 @@ function BulkStockCountView({
       }
     }
 
-    // Step 3: Stay on stock count page, clear selections, show brief confirmation
-    toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`, { duration: 2000 });
-    setSelections(prev => { const next = new Map(prev); for (const k of next.keys()) next.set(k, null); return next; });
-    setBackstockSelections(prev => { const next = new Map(prev); for (const k of next.keys()) next.set(k, null); return next; });
+    // Step 3: Stay on stock count page, show brief confirmation
+    const totalSaved = entries.length + bsEntriesToSave.length - backstockErrors;
+    toast.success(`Saved ${totalSaved} change${totalSaved !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`, { duration: 2000 });
   };
 
   return (
@@ -945,7 +988,7 @@ function BulkStockCountView({
         </Button>
         <div>
           <h2 className="text-xl font-bold">Stock Count</h2>
-          <p className="text-sm text-muted-foreground">Tap quantities for bulk and backstock. Untouched herbs are skipped.</p>
+          <p className="text-sm text-muted-foreground">Current quantities shown selected. Tap to change, then save.</p>
         </div>
       </div>
 
@@ -1046,11 +1089,11 @@ function BulkStockCountView({
       {/* Sticky save bar */}
       <div className="sticky bottom-0 bg-background border-t pt-3 pb-2 flex items-center justify-between gap-4">
         <span className="text-sm text-muted-foreground">
-          {markedCount === 0 ? 'No herbs marked' : `${markedCount} herb${markedCount !== 1 ? 's' : ''} marked`}
+          {changedCount === 0 ? 'No changes' : `${changedCount} change${changedCount !== 1 ? 's' : ''}`}
         </span>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onExit}>Cancel</Button>
-          <Button onClick={handleSave} disabled={bulkUpsert.isPending || markedCount === 0}>
+          <Button variant="outline" onClick={onExit}>Done</Button>
+          <Button onClick={handleSave} disabled={bulkUpsert.isPending || changedCount === 0}>
             {bulkUpsert.isPending ? 'Saving...' : 'Save Stock Count'}
           </Button>
         </div>
