@@ -48,11 +48,20 @@ import { ArrowLeft } from 'lucide-react';
 const LB_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
-const LOW_STOCK_THRESHOLD = 0.5; // lbs
+// Default low-stock threshold when herb has no custom value
+const DEFAULT_LOW_THRESHOLD = 0.25; // lbs
+// Available per-herb low threshold options
+const THRESHOLD_OPTIONS = [0.25, 0.5] as const;
 const NONE_VALUE = '__none__';
 
 function formatLbs(qty: number): string {
   return String(qty);
+}
+
+function calcBulkStatus(qty: number, lowThreshold: number): 'out' | 'low' | 'full' {
+  if (qty <= 0) return 'out';
+  if (qty <= lowThreshold) return 'low';
+  return 'full';
 }
 
 export function BulkInventorySection() {
@@ -78,6 +87,7 @@ export function BulkInventorySection() {
   const [editLatinName, setEditLatinName] = useState('');
   const [editPinyinName, setEditPinyinName] = useState('');
   const [editPreferredName, setEditPreferredName] = useState<'common' | 'latin' | 'pinyin' | null>(null);
+  const [editLowThreshold, setEditLowThreshold] = useState<number>(DEFAULT_LOW_THRESHOLD);
   const [editNotes, setEditNotes] = useState('');
   const [showLowOnly, setShowLowOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,7 +108,8 @@ export function BulkInventorySection() {
     try {
       // Check if this herb already has a bulk record — if so, update it
       const existingBulk = inventory.find(i => i.herb_id === selectedHerbId);
-      const bulkStatus = selectedQuantity <= 0.25 ? 'out' : selectedQuantity <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+      const herbThreshold = selectedHerb?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const bulkStatus = calcBulkStatus(selectedQuantity, herbThreshold);
 
       if (existingBulk) {
         await updateInventory.mutateAsync({
@@ -120,7 +131,7 @@ export function BulkInventorySection() {
       // Handle backstock
       if (selectedBackstockQty !== null) {
         const existingBackstock = backstockByHerbId.get(selectedHerbId);
-        const bsStatus = selectedBackstockQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+        const bsStatus = calcBulkStatus(selectedBackstockQty, DEFAULT_LOW_THRESHOLD);
         if (existingBackstock) {
           await updateInventory.mutateAsync({
             id: existingBackstock.id,
@@ -162,13 +173,13 @@ export function BulkInventorySection() {
     try {
       const currentHerb = herbs.find(h => h.id === herbId);
       if (currentHerb) {
-        const nameChanged = newHerbName.trim() && currentHerb.name !== newHerbName.trim();
         const anyFieldChanged =
-          nameChanged ||
+          (newHerbName.trim() && currentHerb.name !== newHerbName.trim()) ||
           (editCommonName.trim() || null) !== currentHerb.common_name ||
           (editLatinName.trim() || null) !== currentHerb.latin_name ||
           (editPinyinName.trim() || null) !== currentHerb.pinyin_name ||
-          editPreferredName !== currentHerb.preferred_name;
+          editPreferredName !== currentHerb.preferred_name ||
+          editLowThreshold !== currentHerb.low_threshold_lb;
         if (anyFieldChanged) {
           await updateHerb.mutateAsync({
             id: herbId,
@@ -177,12 +188,13 @@ export function BulkInventorySection() {
             latin_name: editLatinName.trim() || null,
             pinyin_name: editPinyinName.trim() || null,
             preferred_name: editPreferredName,
+            low_threshold_lb: editLowThreshold,
           });
         }
       }
 
-      // Update bulk record
-      const status = editQuantity <= 0.25 ? 'out' : editQuantity <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+      // Update bulk record using the herb's low threshold
+      const status = calcBulkStatus(editQuantity, editLowThreshold);
       await updateInventory.mutateAsync({
         id,
         status,
@@ -190,21 +202,20 @@ export function BulkInventorySection() {
         notes: editNotes || null,
       });
 
-      // Handle backstock quantity
+      // Handle backstock quantity (backstock uses default threshold)
       const existingBackstock = backstockByHerbId.get(herbId);
       if (editBackstockQty !== null) {
         if (existingBackstock) {
-          const bsStatus = editBackstockQty <= 0.25 ? 'out' : editBackstockQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
           await updateInventory.mutateAsync({
             id: existingBackstock.id,
-            status: bsStatus,
+            status: calcBulkStatus(editBackstockQty, DEFAULT_LOW_THRESHOLD),
             quantity: editBackstockQty,
           });
         } else {
           await addInventory.mutateAsync({
             herb_id: herbId,
             location: 'backstock',
-            status: editBackstockQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full',
+            status: calcBulkStatus(editBackstockQty, DEFAULT_LOW_THRESHOLD),
             quantity: editBackstockQty,
           });
         }
@@ -241,8 +252,9 @@ export function BulkInventorySection() {
             item.herbs?.pinyin_name?.toLowerCase().includes(query);
           if (!matchesSearch) return false;
         }
-        if (showLowOnly && (item.quantity ?? 0) > LOW_STOCK_THRESHOLD) {
-          return false;
+        if (showLowOnly) {
+          const threshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+          if ((item.quantity ?? 0) > threshold) return false;
         }
         return true;
       })
@@ -255,7 +267,10 @@ export function BulkInventorySection() {
       });
   }, [inventory, searchQuery, showLowOnly]);
 
-  const lowCount = inventory.filter(item => (item.quantity ?? 0) <= LOW_STOCK_THRESHOLD).length;
+  const lowCount = inventory.filter(item => {
+    const threshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+    return (item.quantity ?? 0) <= threshold;
+  }).length;
   const totalCount = inventory.length;
 
   const selectedHerb = herbs.find(h => h.id === selectedHerbId);
@@ -494,6 +509,7 @@ export function BulkInventorySection() {
                   setEditLatinName(item.herbs?.latin_name || '');
                   setEditPinyinName(item.herbs?.pinyin_name || '');
                   setEditPreferredName(item.herbs?.preferred_name ?? null);
+                  setEditLowThreshold(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
                   setEditNotes(item.notes || '');
                 }}
                 onCancelEdit={() => setEditingId(null)}
@@ -505,11 +521,13 @@ export function BulkInventorySection() {
                 onLatinNameChange={setEditLatinName}
                 onPinyinNameChange={setEditPinyinName}
                 onPreferredNameChange={setEditPreferredName}
+                onLowThresholdChange={setEditLowThreshold}
                 onNotesChange={setEditNotes}
                 editCommonName={editCommonName}
                 editLatinName={editLatinName}
                 editPinyinName={editPinyinName}
                 editPreferredName={editPreferredName}
+                editLowThreshold={editLowThreshold}
                 onDelete={() => handleDelete(item.id)}
               />
             );
@@ -531,6 +549,7 @@ interface BulkItemCardProps {
   editLatinName: string;
   editPinyinName: string;
   editPreferredName: 'common' | 'latin' | 'pinyin' | null;
+  editLowThreshold: number;
   editNotes: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -542,6 +561,7 @@ interface BulkItemCardProps {
   onLatinNameChange: (name: string) => void;
   onPinyinNameChange: (name: string) => void;
   onPreferredNameChange: (val: 'common' | 'latin' | 'pinyin' | null) => void;
+  onLowThresholdChange: (val: number) => void;
   onNotesChange: (notes: string) => void;
   onDelete: () => void;
 }
@@ -557,6 +577,7 @@ function BulkItemCard({
   editLatinName,
   editPinyinName,
   editPreferredName,
+  editLowThreshold,
   editNotes,
   onStartEdit,
   onCancelEdit,
@@ -568,11 +589,14 @@ function BulkItemCard({
   onLatinNameChange,
   onPinyinNameChange,
   onPreferredNameChange,
+  onLowThresholdChange,
   onNotesChange,
   onDelete,
 }: BulkItemCardProps) {
   const qty = item.quantity ?? 1;
-  const isLow = qty <= LOW_STOCK_THRESHOLD;
+  const herbThreshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+  const isLow = qty > 0 && qty <= herbThreshold;
+  const isOut = qty <= 0;
 
   return (
     <>
@@ -674,6 +698,21 @@ function BulkItemCard({
             </div>
 
             <div className="space-y-2">
+              <Label>Low stock alert at</Label>
+              <Select
+                value={String(editLowThreshold)}
+                onValueChange={(v) => onLowThresholdChange(Number(v))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {THRESHOLD_OPTIONS.map(t => (
+                    <SelectItem key={t} value={String(t)}>{formatLbs(t)} lb</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label>Notes (optional)</Label>
               <Textarea
                 placeholder="Notes..."
@@ -695,7 +734,9 @@ function BulkItemCard({
       <Card
         className={cn(
           "transition-colors",
-          isLow ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"
+          isOut ? "border-red-500/30 bg-red-500/5"
+          : isLow ? "border-yellow-500/30 bg-yellow-500/5"
+          : "border-green-500/30 bg-green-500/5"
         )}
       >
         <CardContent className="px-3 py-2">
@@ -724,7 +765,7 @@ function BulkItemCard({
               </span>
             )}
             {/* Quantity badge */}
-            <LbsBadge qty={qty} />
+            <LbsBadge qty={qty} lowThreshold={herbThreshold} />
             {/* Actions */}
             <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={onStartEdit}>
               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -742,9 +783,9 @@ function BulkItemCard({
   );
 }
 
-function LbsBadge({ qty }: { qty: number }) {
-  const isOut = qty <= 0.25;
-  const isLow = !isOut && qty <= LOW_STOCK_THRESHOLD;
+function LbsBadge({ qty, lowThreshold }: { qty: number; lowThreshold: number }) {
+  const isOut = qty <= 0;
+  const isLow = !isOut && qty <= lowThreshold;
   return (
     <span
       className={cn(
@@ -867,8 +908,9 @@ function BulkStockCountView({
     for (const [herbName, sel] of selections.entries()) {
       if (sel === null) continue;
       const quantity = sel === 'out' ? 0 : sel;
-      const status = quantity === 0 ? 'out' : quantity <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
       const herbRecord = herbByName.get(herbName);
+      const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const status = calcBulkStatus(quantity, herbThreshold);
       entries.push({ herbName, quantity, status, herbId: herbRecord?.id });
     }
     if (entries.length === 0) { toast.info('No herbs selected — nothing to save.'); return; }
@@ -895,7 +937,7 @@ function BulkStockCountView({
       if (bsQty === null) continue;
       const herbRecord = herbByName.get(herbName);
       const existingBackstock = backstockByName.get(herbName);
-      const bsStatus = bsQty <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
+      const bsStatus = calcBulkStatus(bsQty, DEFAULT_LOW_THRESHOLD);
       try {
         if (existingBackstock) {
           await updateInventory.mutateAsync({ id: existingBackstock.id, quantity: bsQty, status: bsStatus });

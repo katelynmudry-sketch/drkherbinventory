@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           latin_name: string | null
+          low_threshold_lb: number
           name: string
           notes: string | null
           pinyin_name: string | null
@@ -32,6 +33,7 @@ export type Database = {
           created_at?: string
           id?: string
           latin_name?: string | null
+          low_threshold_lb?: number
           name: string
           notes?: string | null
           pinyin_name?: string | null
@@ -44,6 +46,7 @@ export type Database = {
           created_at?: string
           id?: string
           latin_name?: string | null
+          low_threshold_lb?: number
           name?: string
           notes?: string | null
           pinyin_name?: string | null

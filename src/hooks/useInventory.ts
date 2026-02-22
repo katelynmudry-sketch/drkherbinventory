@@ -13,6 +13,7 @@ export interface Herb {
   latin_name: string | null;
   pinyin_name: string | null;
   preferred_name: 'common' | 'latin' | 'pinyin' | null;
+  low_threshold_lb: number;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -108,7 +109,7 @@ export function useAddHerb() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (herb: { name: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin'; notes?: string }) => {
+    mutationFn: async (herb: { name: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin'; low_threshold_lb?: number; notes?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       
@@ -130,7 +131,7 @@ export function useUpdateHerb() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin' | null; notes?: string }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string }) => {
       const { data, error } = await supabase
         .from('herbs')
         .update(updates)
