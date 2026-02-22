@@ -8,10 +8,14 @@
  *   scripts/clef-import.sql  (review this, then run in Supabase SQL Editor)
  */
 
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { findBestHerbMatch, HERB_LIST } from '../src/lib/herbCorrection';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const XLSX_PATH = path.resolve(__dirname, '../Supplier info/MUDRY, KATELYN_2025 CLEF_Order Form_dec 12.xlsx');
 const OUTPUT_PATH = path.resolve(__dirname, 'clef-import.sql');

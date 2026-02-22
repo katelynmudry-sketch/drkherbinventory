@@ -35,6 +35,7 @@ import {
   useDeleteInventory,
   useUpdateHerb,
   useBulkUpsert,
+  getDisplayName,
   Herb,
   InventoryItem,
 } from '@/hooks/useInventory';
@@ -73,6 +74,10 @@ export function BulkInventorySection() {
   const [editQuantity, setEditQuantity] = useState(1);
   const [editBackstockQty, setEditBackstockQty] = useState<number | null>(null);
   const [editHerbName, setEditHerbName] = useState('');
+  const [editCommonName, setEditCommonName] = useState('');
+  const [editLatinName, setEditLatinName] = useState('');
+  const [editPinyinName, setEditPinyinName] = useState('');
+  const [editPreferredName, setEditPreferredName] = useState<'common' | 'latin' | 'pinyin' | null>(null);
   const [editNotes, setEditNotes] = useState('');
   const [showLowOnly, setShowLowOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,8 +161,24 @@ export function BulkInventorySection() {
   const handleUpdateItem = async (id: string, herbId: string, newHerbName: string) => {
     try {
       const currentHerb = herbs.find(h => h.id === herbId);
-      if (currentHerb && currentHerb.name !== newHerbName && newHerbName.trim()) {
-        await updateHerb.mutateAsync({ id: herbId, name: newHerbName.trim() });
+      if (currentHerb) {
+        const nameChanged = newHerbName.trim() && currentHerb.name !== newHerbName.trim();
+        const anyFieldChanged =
+          nameChanged ||
+          (editCommonName.trim() || null) !== currentHerb.common_name ||
+          (editLatinName.trim() || null) !== currentHerb.latin_name ||
+          (editPinyinName.trim() || null) !== currentHerb.pinyin_name ||
+          editPreferredName !== currentHerb.preferred_name;
+        if (anyFieldChanged) {
+          await updateHerb.mutateAsync({
+            id: herbId,
+            name: newHerbName.trim() || currentHerb.name,
+            common_name: editCommonName.trim() || null,
+            latin_name: editLatinName.trim() || null,
+            pinyin_name: editPinyinName.trim() || null,
+            preferred_name: editPreferredName,
+          });
+        }
       }
 
       // Update bulk record
@@ -215,7 +236,9 @@ export function BulkInventorySection() {
           const query = searchQuery.toLowerCase();
           const matchesSearch =
             item.herbs?.name?.toLowerCase().includes(query) ||
-            item.herbs?.common_name?.toLowerCase().includes(query);
+            item.herbs?.common_name?.toLowerCase().includes(query) ||
+            item.herbs?.latin_name?.toLowerCase().includes(query) ||
+            item.herbs?.pinyin_name?.toLowerCase().includes(query);
           if (!matchesSearch) return false;
         }
         if (showLowOnly && (item.quantity ?? 0) > LOW_STOCK_THRESHOLD) {
@@ -296,9 +319,7 @@ export function BulkInventorySection() {
                         aria-expanded={herbPickerOpen}
                         className="w-full justify-between font-normal"
                       >
-                        {selectedHerb
-                          ? `${selectedHerb.name}${selectedHerb.common_name ? ` (${selectedHerb.common_name})` : ''}`
-                          : "Search or select an herb..."}
+                        {selectedHerb ? getDisplayName(selectedHerb) : "Search or select an herb..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
@@ -313,7 +334,7 @@ export function BulkInventorySection() {
                               return (
                                 <CommandItem
                                   key={herb.id}
-                                  value={`${herb.name} ${herb.common_name || ''}`}
+                                  value={[herb.name, herb.common_name, herb.latin_name, herb.pinyin_name].filter(Boolean).join(' ')}
                                   onSelect={() => {
                                     setSelectedHerbId(herb.id);
                                     if (existingBulk) setSelectedQuantity(existingBulk.quantity ?? 1);
@@ -326,10 +347,12 @@ export function BulkInventorySection() {
                                       selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
                                     )}
                                   />
-                                  {herb.name}
-                                  {herb.common_name && (
-                                    <span className="ml-1 text-muted-foreground">({herb.common_name})</span>
-                                  )}
+                                  {getDisplayName(herb)}
+                                  {[herb.common_name, herb.latin_name, herb.pinyin_name]
+                                    .filter((n): n is string => !!n && n !== getDisplayName(herb))
+                                    .map((n, i) => (
+                                      <span key={i} className="ml-1 text-muted-foreground text-xs">({n})</span>
+                                    ))}
                                   {existingBulk && (
                                     <span className="ml-auto text-xs text-muted-foreground">{formatLbs(existingBulk.quantity ?? 1)} lb</span>
                                   )}
@@ -467,6 +490,10 @@ export function BulkInventorySection() {
                   setEditQuantity(item.quantity ?? 1);
                   setEditBackstockQty(backstock?.quantity ?? null);
                   setEditHerbName(item.herbs?.name || '');
+                  setEditCommonName(item.herbs?.common_name || '');
+                  setEditLatinName(item.herbs?.latin_name || '');
+                  setEditPinyinName(item.herbs?.pinyin_name || '');
+                  setEditPreferredName(item.herbs?.preferred_name ?? null);
                   setEditNotes(item.notes || '');
                 }}
                 onCancelEdit={() => setEditingId(null)}
@@ -474,7 +501,15 @@ export function BulkInventorySection() {
                 onQuantityChange={setEditQuantity}
                 onBackstockQtyChange={setEditBackstockQty}
                 onHerbNameChange={setEditHerbName}
+                onCommonNameChange={setEditCommonName}
+                onLatinNameChange={setEditLatinName}
+                onPinyinNameChange={setEditPinyinName}
+                onPreferredNameChange={setEditPreferredName}
                 onNotesChange={setEditNotes}
+                editCommonName={editCommonName}
+                editLatinName={editLatinName}
+                editPinyinName={editPinyinName}
+                editPreferredName={editPreferredName}
                 onDelete={() => handleDelete(item.id)}
               />
             );
@@ -492,6 +527,10 @@ interface BulkItemCardProps {
   editQuantity: number;
   editBackstockQty: number | null;
   editHerbName: string;
+  editCommonName: string;
+  editLatinName: string;
+  editPinyinName: string;
+  editPreferredName: 'common' | 'latin' | 'pinyin' | null;
   editNotes: string;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -499,6 +538,10 @@ interface BulkItemCardProps {
   onQuantityChange: (qty: number) => void;
   onBackstockQtyChange: (qty: number | null) => void;
   onHerbNameChange: (name: string) => void;
+  onCommonNameChange: (name: string) => void;
+  onLatinNameChange: (name: string) => void;
+  onPinyinNameChange: (name: string) => void;
+  onPreferredNameChange: (val: 'common' | 'latin' | 'pinyin' | null) => void;
   onNotesChange: (notes: string) => void;
   onDelete: () => void;
 }
@@ -510,6 +553,10 @@ function BulkItemCard({
   editQuantity,
   editBackstockQty,
   editHerbName,
+  editCommonName,
+  editLatinName,
+  editPinyinName,
+  editPreferredName,
   editNotes,
   onStartEdit,
   onCancelEdit,
@@ -517,6 +564,10 @@ function BulkItemCard({
   onQuantityChange,
   onBackstockQtyChange,
   onHerbNameChange,
+  onCommonNameChange,
+  onLatinNameChange,
+  onPinyinNameChange,
+  onPreferredNameChange,
   onNotesChange,
   onDelete,
 }: BulkItemCardProps) {
@@ -533,12 +584,51 @@ function BulkItemCard({
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Herb name</Label>
+              <Label>Primary name</Label>
               <Input
                 value={editHerbName}
                 onChange={(e) => onHerbNameChange(e.target.value)}
-                placeholder="Herb name"
+                placeholder="e.g. Althea"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Common name (optional)</Label>
+              <Input
+                value={editCommonName}
+                onChange={(e) => onCommonNameChange(e.target.value)}
+                placeholder="e.g. Marshmallow"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Latin / botanical name (optional)</Label>
+              <Input
+                value={editLatinName}
+                onChange={(e) => onLatinNameChange(e.target.value)}
+                placeholder="e.g. Althaea officinalis"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Pinyin name (optional)</Label>
+              <Input
+                value={editPinyinName}
+                onChange={(e) => onPinyinNameChange(e.target.value)}
+                placeholder="e.g. Huang Qi"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Display name</Label>
+              <Select
+                value={editPreferredName ?? '__default__'}
+                onValueChange={(v) => onPreferredNameChange(v === '__default__' ? null : v as 'common' | 'latin' | 'pinyin')}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Primary ({editHerbName || 'name'})</SelectItem>
+                  {editCommonName && <SelectItem value="common">Common ({editCommonName})</SelectItem>}
+                  {editLatinName && <SelectItem value="latin">Latin ({editLatinName})</SelectItem>}
+                  {editPinyinName && <SelectItem value="pinyin">Pinyin ({editPinyinName})</SelectItem>}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -612,10 +702,19 @@ function BulkItemCard({
           <div className="flex items-center gap-2 min-w-0">
             {/* Name */}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate leading-tight">{item.herbs?.name}</p>
-              {item.herbs?.common_name && (
-                <p className="text-xs text-muted-foreground truncate leading-tight">{item.herbs.common_name}</p>
-              )}
+              {item.herbs ? (() => {
+                const display = getDisplayName(item.herbs);
+                const alts = [item.herbs.name, item.herbs.common_name, item.herbs.latin_name, item.herbs.pinyin_name]
+                  .filter((n): n is string => !!n && n !== display);
+                return (
+                  <>
+                    <p className="text-sm font-medium truncate leading-tight">{display}</p>
+                    {alts.length > 0 && (
+                      <p className="text-xs text-muted-foreground truncate leading-tight">{alts.join(' · ')}</p>
+                    )}
+                  </>
+                );
+              })() : null}
             </div>
             {/* Backstock badge */}
             {backstockQty !== null && (
@@ -748,8 +847,17 @@ function BulkStockCountView({
   const filteredHerbs = useMemo(() => {
     if (!search.trim()) return HERB_LIST;
     const q = search.toLowerCase();
-    return HERB_LIST.filter(h => h.toLowerCase().includes(q));
-  }, [search]);
+    return HERB_LIST.filter(h => {
+      if (h.toLowerCase().includes(q)) return true;
+      const dbHerb = herbByName.get(h);
+      if (!dbHerb) return false;
+      return (
+        dbHerb.common_name?.toLowerCase().includes(q) ||
+        dbHerb.latin_name?.toLowerCase().includes(q) ||
+        dbHerb.pinyin_name?.toLowerCase().includes(q)
+      );
+    });
+  }, [search, herbByName]);
 
   const handleSave = async () => {
     const entries: Parameters<typeof bulkUpsert.mutateAsync>[0] = [];
@@ -828,7 +936,9 @@ function BulkStockCountView({
           const bsSel = backstockSelections.get(herbName);
           return (
             <div key={herbName} className="flex items-start gap-2 px-3 py-2">
-              <span className="w-36 flex-shrink-0 text-sm font-medium pt-1">{herbName}</span>
+              <span className="w-36 flex-shrink-0 text-sm font-medium pt-1">
+                {herbByName.get(herbName) ? getDisplayName(herbByName.get(herbName)!) : herbName}
+              </span>
               {/* Bulk qty buttons */}
               <div className="flex flex-wrap gap-1 flex-1">
                 {STOCK_COUNT_OPTIONS.map(opt => (
