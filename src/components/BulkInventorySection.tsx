@@ -820,15 +820,6 @@ function BulkStockCountView({
   const updateInventory = useUpdateInventory();
   const [search, setSearch] = useState('');
 
-  // herbName → existing bulk record
-  const existingByName = useMemo(() => {
-    const map = new Map<string, InventoryItem>();
-    for (const item of inventory) {
-      if (item.herbs?.name) map.set(item.herbs.name, item);
-    }
-    return map;
-  }, [inventory]);
-
   // herbName → existing backstock record
   const backstockByName = useMemo(() => {
     const map = new Map<string, InventoryItem>();
@@ -845,28 +836,18 @@ function BulkStockCountView({
     return map;
   }, [herbs]);
 
-  // herbName → selected bulk qty (number), 'out', or null (skip)
+  // herbName → selected bulk qty (number), 'out', or null (skip/untouched)
+  // Starts all-null — only herbs the user explicitly taps get saved
   const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => {
     const initial = new Map<string, number | 'out' | null>();
-    for (const name of HERB_LIST) {
-      const existing = existingByName.get(name);
-      if (existing) {
-        const qty = existing.quantity ?? 0;
-        initial.set(name, qty === 0 ? 'out' : qty);
-      } else {
-        initial.set(name, null);
-      }
-    }
+    for (const name of HERB_LIST) initial.set(name, null);
     return initial;
   });
 
-  // herbName → selected backstock qty (number | null — null means no change / none)
+  // herbName → selected backstock qty — null means untouched/skip
   const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(() => {
     const initial = new Map<string, number | null>();
-    for (const name of HERB_LIST) {
-      const existing = backstockByName.get(name);
-      initial.set(name, existing ? (existing.quantity ?? null) : null);
-    }
+    for (const name of HERB_LIST) initial.set(name, null);
     return initial;
   });
 
@@ -949,9 +930,10 @@ function BulkStockCountView({
       }
     }
 
-    // Step 3: Always exit on bulk save success
-    toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`);
-    onExit();
+    // Step 3: Stay on stock count page, clear selections, show brief confirmation
+    toast.success(`Saved ${entries.length} herb${entries.length !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`, { duration: 2000 });
+    setSelections(prev => { const next = new Map(prev); for (const k of next.keys()) next.set(k, null); return next; });
+    setBackstockSelections(prev => { const next = new Map(prev); for (const k of next.keys()) next.set(k, null); return next; });
   };
 
   return (
