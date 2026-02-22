@@ -868,9 +868,8 @@ function BulkStockCountView({
       if (sel === null) continue;
       const quantity = sel === 'out' ? 0 : sel;
       const status = quantity === 0 ? 'out' : quantity <= LOW_STOCK_THRESHOLD ? 'low' : 'full';
-      const existing = existingByName.get(herbName);
       const herbRecord = herbByName.get(herbName);
-      entries.push({ herbName, quantity, status, existingId: existing?.id, herbId: herbRecord?.id });
+      entries.push({ herbName, quantity, status, herbId: herbRecord?.id });
     }
     if (entries.length === 0) { toast.info('No herbs selected — nothing to save.'); return; }
 

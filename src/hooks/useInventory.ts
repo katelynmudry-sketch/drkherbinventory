@@ -231,7 +231,6 @@ export function useBulkUpsert() {
       herbName: string;
       quantity: number;
       status: InventoryStatus;
-      existingId?: string;      // set if herb already has a bulk record
       herbId?: string;          // set if herb already exists in herbs table
     }>) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -266,11 +265,12 @@ export function useBulkUpsert() {
             }
           }
 
-          // Upsert — safe whether or not a record already exists
+          // Upsert on (herb_id, location) — do NOT include id in payload,
+          // as passing id alongside onConflict:'herb_id,location' triggers a
+          // duplicate primary key error when Supabase tries to insert a new row.
           const { error } = await supabase
             .from('inventory')
             .upsert({
-              ...(entry.existingId ? { id: entry.existingId } : {}),
               herb_id,
               location: 'bulk',
               quantity: entry.quantity,
