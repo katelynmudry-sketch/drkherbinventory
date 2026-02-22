@@ -887,10 +887,11 @@ function BulkStockCountView({
     return map;
   }, [backstockInventory]);
 
-  // herbName → herb record — keyed by herbs.name (primary name, case-sensitive from DB)
+  // herbName (lowercase) → herb record — case-insensitive so HERB_LIST names match DB names
+  // e.g. HERB_LIST "Black Cohosh" matches DB "Black cohosh"
   const herbByName = useMemo(() => {
     const map = new Map<string, Herb>();
-    for (const h of herbs) map.set(h.name, h);
+    for (const h of herbs) map.set(h.name.toLowerCase(), h);
     return map;
   }, [herbs]);
 
@@ -920,7 +921,7 @@ function BulkStockCountView({
       const next = new Map(prev);
       for (const name of allHerbNames) {
         if (userTouched.has(name)) continue;
-        const herb = herbByName.get(name);
+        const herb = herbByName.get(name.toLowerCase());
         const existing = herb ? existingById.get(herb.id) : undefined;
         if (existing) {
           const qty = Number(existing.quantity ?? 0);
@@ -939,7 +940,7 @@ function BulkStockCountView({
       const next = new Map(prev);
       for (const name of allHerbNames) {
         if (userTouchedBs.has(name)) continue;
-        const herb = herbByName.get(name);
+        const herb = herbByName.get(name.toLowerCase());
         const existing = herb ? backstockById.get(herb.id) : undefined;
         if (existing) {
           next.set(name, Number(existing.quantity ?? 0) || null);
@@ -972,7 +973,7 @@ function BulkStockCountView({
   // Count changed bulk selections (compare against DB via herb_id)
   const changedCount = Array.from(selections.entries()).filter(([name, sel]) => {
     if (sel === null) return false;
-    const herb = herbByName.get(name);
+    const herb = herbByName.get(name.toLowerCase());
     const existing = herb ? existingById.get(herb.id) : undefined;
     const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
     const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
@@ -984,7 +985,7 @@ function BulkStockCountView({
     const q = search.toLowerCase();
     return allHerbNames.filter(h => {
       if (h.toLowerCase().includes(q)) return true;
-      const dbHerb = herbByName.get(h);
+      const dbHerb = herbByName.get(h.toLowerCase());
       if (!dbHerb) return false;
       return (
         dbHerb.common_name?.toLowerCase().includes(q) ||
@@ -998,7 +999,7 @@ function BulkStockCountView({
     const entries: Parameters<typeof bulkUpsert.mutateAsync>[0] = [];
     for (const [herbName, sel] of selections.entries()) {
       if (sel === null) continue;
-      const herb = herbByName.get(herbName);
+      const herb = herbByName.get(herbName.toLowerCase());
       const existing = herb ? existingById.get(herb.id) : undefined;
       const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
       const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
@@ -1012,7 +1013,7 @@ function BulkStockCountView({
     const bsEntriesToSave: Array<{ herbName: string; bsQty: number }> = [];
     for (const [herbName, bsQty] of backstockSelections.entries()) {
       if (bsQty === null) continue;
-      const herb = herbByName.get(herbName);
+      const herb = herbByName.get(herbName.toLowerCase());
       const existing = herb ? backstockById.get(herb.id) : undefined;
       const dbBsVal = existing?.quantity != null ? Number(existing.quantity) : null;
       if (bsQty === dbBsVal) continue;
@@ -1040,7 +1041,7 @@ function BulkStockCountView({
 
     let backstockErrors = 0;
     for (const { herbName, bsQty } of bsEntriesToSave) {
-      const herb = herbByName.get(herbName);
+      const herb = herbByName.get(herbName.toLowerCase());
       const existingBackstock = herb ? backstockById.get(herb.id) : undefined;
       const bsStatus = calcBulkStatus(bsQty, DEFAULT_LOW_THRESHOLD);
       try {
@@ -1095,7 +1096,7 @@ function BulkStockCountView({
           return (
             <div key={herbName} className="flex items-start gap-2 px-3 py-2">
               <span className="w-36 flex-shrink-0 text-sm font-medium pt-1">
-                {herbByName.get(herbName) ? getDisplayName(herbByName.get(herbName)!) : herbName}
+                {herbByName.get(herbName.toLowerCase()) ? getDisplayName(herbByName.get(herbName.toLowerCase())!) : herbName}
               </span>
               {/* Bulk qty buttons */}
               <div className="flex flex-wrap gap-1 flex-1">
