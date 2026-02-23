@@ -901,14 +901,26 @@ function BulkStockCountView({
   // Full list of herb names for display: HERB_LIST + any bulk inventory herbs not in it
   // Uses herbs.name as the canonical key throughout
   const allHerbNames = useMemo(() => {
-    const herbListSet = new Set(HERB_LIST);
+    // Collect herb_ids already covered by HERB_LIST entries (case-insensitive name match).
+    // This prevents a misspelled DB name (e.g. "dandleion root") from appearing as an
+    // extra row when the correct herb record is already matched by a HERB_LIST entry.
+    const coveredHerbIds = new Set<string>();
+    for (const listName of HERB_LIST) {
+      const herb = herbByName.get(listName.toLowerCase());
+      if (herb) coveredHerbIds.add(herb.id);
+    }
     const extra: string[] = [];
     for (const item of inventory) {
       const name = item.herbs?.name;
-      if (name && !herbListSet.has(name)) extra.push(name);
+      if (name && !coveredHerbIds.has(item.herb_id)) extra.push(name);
     }
-    return [...HERB_LIST, ...extra.sort((a, b) => a.localeCompare(b))];
-  }, [inventory]);
+    // Merge and sort everything alphabetically by display name
+    return [...HERB_LIST, ...extra].sort((a, b) => {
+      const dispA = herbByName.get(a.toLowerCase()) ? getDisplayName(herbByName.get(a.toLowerCase())!) : a;
+      const dispB = herbByName.get(b.toLowerCase()) ? getDisplayName(herbByName.get(b.toLowerCase())!) : b;
+      return dispA.localeCompare(dispB, undefined, { sensitivity: 'base' });
+    });
+  }, [inventory, herbByName]);
 
   // herbName → selected bulk qty (keyed by herbs.name, looked up via herbByName → herb_id → existingById)
   const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => new Map());

@@ -433,3 +433,26 @@ export function useMarkAsOrdered() {
     },
   });
 }
+
+// Unmark 'ordered' — recalculates correct status from quantity + herb threshold
+export function useUnmarkOrdered() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (items: Array<{ id: string; quantity: number; low_threshold_lb: number }>) => {
+      await Promise.all(items.map(async ({ id, quantity, low_threshold_lb }) => {
+        const qty = Number(quantity);
+        const threshold = Number(low_threshold_lb);
+        const status: InventoryStatus = qty <= 0 ? 'out' : qty <= threshold ? 'low' : 'full';
+        const { error } = await supabase
+          .from('inventory')
+          .update({ status })
+          .eq('id', id);
+        if (error) throw error;
+      }));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Package, Plus, ShoppingCart, Trash2, X, CheckCheck } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Package, Plus, ShoppingCart, Trash2, X, CheckCheck, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { useInventory, useUpdateLowThreshold, useMarkAsOrdered } from '@/hooks/useInventory';
+import { useInventory, useUpdateLowThreshold, useMarkAsOrdered, useUnmarkOrdered } from '@/hooks/useInventory';
 import {
   useSuppliers,
   useAddSupplier,
@@ -294,12 +294,19 @@ const Ordering = () => {
 
   // Data
   const { data: inventory = [] } = useInventory('bulk');
+  const { data: backstockInventory = [] } = useInventory('bulk_backstock');
   const { data: suppliers = [] } = useSuppliers();
   const { data: pricing = [] } = useHerbPricing();
   const { data: reorderQtys = [] } = useReorderQtys();
   const upsertReorderQty = useUpsertReorderQty();
   const updateLowThreshold = useUpdateLowThreshold();
   const markAsOrdered = useMarkAsOrdered();
+  const unmarkOrdered = useUnmarkOrdered();
+
+  // Bulk herbs currently marked as ordered
+  const orderedHerbs = useMemo(() =>
+    inventory.filter(i => i.status === 'ordered')
+  , [inventory]);
 
   // Supplier management state
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -307,12 +314,19 @@ const Ordering = () => {
   const addSupplier = useAddSupplier();
   const deleteSupplier = useDeleteSupplier();
 
+  // herb_ids that have backstock quantity > 0 (no need to order these)
+  const herbIdsWithBackstock = useMemo(() =>
+    new Set(backstockInventory.filter(i => Number(i.quantity) > 0).map(i => i.herb_id))
+  , [backstockInventory]);
+
   // ── Compute the order list ────────────────────────────────────────────────
   const orderItems = useMemo(() => {
     const included = new Map<string, (typeof inventory)[0] & { _manuallyAdded?: boolean }>();
 
     for (const item of inventory) {
       if (manualRemoveIds.has(item.id)) continue;
+      // Skip herbs that have backstock available
+      if (herbIdsWithBackstock.has(item.herb_id)) continue;
 
       const qty = Number(item.quantity);
       const matchesOut = activeFilters.has('out') && item.status === 'out';
@@ -324,7 +338,7 @@ const Ordering = () => {
       }
     }
 
-    // Manually added herbs
+    // Manually added herbs bypass the backstock filter
     for (const herbName of manualAdds) {
       const item = inventory.find(i => (i.herbs?.name ?? '') === herbName);
       if (item && !manualRemoveIds.has(item.id) && !included.has(item.id)) {
@@ -333,7 +347,7 @@ const Ordering = () => {
     }
 
     return Array.from(included.values());
-  }, [inventory, activeFilters, manualAdds, manualRemoveIds]);
+  }, [inventory, activeFilters, manualAdds, manualRemoveIds, herbIdsWithBackstock]);
 
   // Herbs available to add manually (bulk inventory herbs not already in the order list)
   const orderItemIds = useMemo(() => new Set(orderItems.map(i => i.id)), [orderItems]);
@@ -405,6 +419,32 @@ const Ordering = () => {
       setSuggestion(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to mark as ordered');
+    }
+  };
+
+  const handleUnmarkOne = async (item: (typeof inventory)[0]) => {
+    try {
+      await unmarkOrdered.mutateAsync([{
+        id: item.id,
+        quantity: Number(item.quantity),
+        low_threshold_lb: Number(item.herbs?.low_threshold_lb ?? 0.25),
+      }]);
+      toast.success(`Unmarked ${item.herbs?.name ?? 'herb'} as ordered`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to undo');
+    }
+  };
+
+  const handleUnmarkAll = async () => {
+    try {
+      await unmarkOrdered.mutateAsync(orderedHerbs.map(i => ({
+        id: i.id,
+        quantity: Number(i.quantity),
+        low_threshold_lb: Number(i.herbs?.low_threshold_lb ?? 0.25),
+      })));
+      toast.success(`Unmarked ${orderedHerbs.length} herb${orderedHerbs.length !== 1 ? 's' : ''}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to undo');
     }
   };
 
@@ -614,6 +654,49 @@ const Ordering = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Section 1.5: Ordered herbs (undo panel) */}
+        {orderedHerbs.length > 0 && (
+          <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                  <CheckCheck className="h-4 w-4" />
+                  Ordered ({orderedHerbs.length})
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100"
+                  onClick={handleUnmarkAll}
+                  disabled={unmarkOrdered.isPending}
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  Undo All
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {orderedHerbs.map(item => (
+                  <div key={item.id} className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900/40 border border-blue-200 rounded-full pl-3 pr-1 py-1">
+                    <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                      {item.herbs?.name ?? '—'}
+                    </span>
+                    <span className="text-xs text-blue-500 ml-1">{Number(item.quantity)} lb</span>
+                    <button
+                      className="ml-1 rounded-full p-0.5 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-500 hover:text-blue-700"
+                      title="Undo ordered"
+                      onClick={() => handleUnmarkOne(item)}
+                    >
+                      <Undo2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Section 2: Order Suggestion */}
         {suggestion && (
