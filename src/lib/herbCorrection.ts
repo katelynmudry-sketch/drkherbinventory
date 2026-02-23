@@ -1,3 +1,190 @@
+// ─── Herb Metadata ────────────────────────────────────────────────────────────
+// Latin names, common names, and supplier search keywords for each canonical
+// herb name. Used by:
+//   • Import scripts (PB/Clef) to match Latin-named herbs to supplier listings
+//   • SQL generation to populate latin_name/common_name columns in the DB
+//   • Voice matching — latin/common names are passed as extraNames
+export interface HerbMeta {
+  latin?: string;       // Primary latin/scientific name
+  common?: string;      // English common name (if canonical name is Latin)
+  pbKeywords?: string[]; // Words that MUST appear in a PB description to match
+  clefKeywords?: string[]; // Words that MUST appear in a Clef description to match
+}
+
+export const HERB_METADATA: Record<string, HerbMeta> = {
+  // A
+  "Alfalfa":              { latin: "Medicago sativa" },
+  "Agrimony":             { latin: "Agrimonia eupatoria" },
+  "Althea":               { latin: "Althaea officinalis", common: "Marshmallow Root", pbKeywords: ["MARSHMALLOW", "ROOT"] },
+  "Angelica":             { latin: "Angelica archangelica" },
+  "Anise":                { latin: "Pimpinella anisum" },
+  "Artichoke":            { latin: "Cynara cardunculus" },
+  "Artemisia":            { latin: "Artemisia annua", common: "Wormwood" },
+  "Ashwagandha":          { latin: "Withania somnifera" },
+  "Astragalus":           { latin: "Astragalus membranaceus" },
+  "Avena":                { latin: "Avena sativa", common: "Oatstraw", pbKeywords: ["OATSTRAW"] },
+
+  // B
+  "Bacopa":               { latin: "Bacopa monnieri", common: "Brahmi" },
+  "Baptisia":             { latin: "Baptisia tinctoria", common: "Wild Indigo" },
+  "Bayberry Root Bark":   { latin: "Morella cerifera" },
+  "Bee Balm":             { latin: "Monarda fistulosa" },
+  "Birch Bark":           { latin: "Betula papyrifera" },
+  "Birch Leaf":           { latin: "Betula pendula" },
+  "Black Cohosh":         { latin: "Actaea racemosa" },
+  "Black Haw":            { latin: "Viburnum prunifolium", pbKeywords: ["BLACK", "HAW"] },
+  "Black Pepper":         { latin: "Piper nigrum" },
+  "Black Walnut":         { latin: "Juglans nigra" },
+  "Blessed Thistle":      { latin: "Cnicus benedictus" },
+  "Blue Cohosh":          { latin: "Caulophyllum thalictroides" },
+  "Blue Vervain":         { latin: "Verbena hastata" },
+  "Boneset":              { latin: "Eupatorium perfoliatum" },
+  "Borage":               { latin: "Borago officinalis" },
+  "Bugleweed":            { latin: "Lycopus europaeus", common: "Lycopus" },
+  "Bupleurum":            { latin: "Bupleurum chinense" },
+  "Burdock":              { latin: "Arctium lappa" },
+
+  // C
+  "Calamus":              { latin: "Acorus calamus", common: "Sweet Flag" },
+  "Calendula":            { latin: "Calendula officinalis" },
+  "California Poppy":     { latin: "Eschscholzia californica" },
+  "Cat's Claw":           { latin: "Uncaria tomentosa" },
+  "Catnip":               { latin: "Nepeta cataria" },
+  "Chamomile":            { latin: "Matricaria chamomilla" },
+  "Chelidonium":          { latin: "Chelidonium majus", common: "Celandine" },
+  "Cinnamon":             { latin: "Cinnamomum verum" },
+  "Cleavers":             { latin: "Galium aparine" },
+  "Comfrey Root":         { latin: "Symphytum officinale" },
+  "Couch Grass":          { latin: "Elymus repens" },
+  "Cramp Bark":           { latin: "Viburnum opulus", pbKeywords: ["CRAMPBARK"] },
+
+  // D
+  "Damiana":              { latin: "Turnera diffusa" },
+  "Dandelion Leaf":       { latin: "Taraxacum officinale" },
+  "Dandelion Root":       { latin: "Taraxacum officinale" },
+  "Devil's Claw":         { latin: "Harpagophytum procumbens" },
+  "Devil's Club":         { latin: "Oplopanax horridus" },
+  "Dong Quai":            { latin: "Angelica sinensis" },
+
+  // E
+  "Echinacea Augustifolia": { latin: "Echinacea angustifolia", pbKeywords: ["ECHINACEA", "ANGUSTIFOLIA"] },
+  "Echinacea Purpurea Leaf": { latin: "Echinacea purpurea", pbKeywords: ["ECHINACEA", "PURPUREA", "HERB"] },
+  "Echinacea Purpurea Root": { latin: "Echinacea purpurea", pbKeywords: ["ECHINACEA", "PURPUREA", "ROOT"] },
+  "Eclipta":              { latin: "Eclipta prostrata" },
+  "Eleuthero":            { latin: "Eleutherococcus senticosus", common: "Siberian Ginseng" },
+  "Erigeron":             { latin: "Erigeron canadensis", common: "Fleabane" },
+
+  // F
+  "Fennel":               { latin: "Foeniculum vulgare" },
+  "Feverfew":             { latin: "Tanacetum parthenium" },
+
+  // G
+  "Gentian":              { latin: "Gentiana lutea" },
+  "Ginger":               { latin: "Zingiber officinale" },
+  "Ginkgo":               { latin: "Ginkgo biloba" },
+  "Goji":                 { latin: "Lycium barbarum", common: "Goji Berry" },
+  "Goldenrod":            { latin: "Solidago canadensis" },
+  "Gotu Kola":            { latin: "Centella asiatica" },
+  "Gravel Root":          { latin: "Eutrochium purpureum" },
+
+  // H
+  "Hawthorn":             { latin: "Crataegus monogyna" },
+  "Hops":                 { latin: "Humulus lupulus" },
+  "Horse Chestnut":       { latin: "Aesculus hippocastanum", pbKeywords: ["HORSE", "CHESTNUT"] },
+  "Horsetail":            { latin: "Equisetum arvense" },
+  "Hypericum":            { latin: "Hypericum perforatum", common: "St. John's Wort", pbKeywords: ["ST", "JOHNS", "WORT"] },
+  "Hyssop":               { latin: "Hyssopus officinalis" },
+
+  // I
+  "Inula":                { latin: "Inula helenium", common: "Elecampane", pbKeywords: ["ELECAMPANE"] },
+  "Iris":                 { latin: "Iris versicolor", common: "Blue Flag", pbKeywords: ["BLUE", "FLAG"] },
+
+  // J
+  "Juniper":              { latin: "Juniperus communis" },
+
+  // L
+  "Labrador Tea":         { latin: "Rhododendron groenlandicum" },
+  "Lady's Mantle":        { latin: "Alchemilla vulgaris" },
+  "Lavender":             { latin: "Lavandula angustifolia" },
+  "Lemon Balm":           { latin: "Melissa officinalis" },
+  "Lemongrass":           { latin: "Cymbopogon citratus" },
+  "Licorice":             { latin: "Glycyrrhiza glabra" },
+  "Linden":               { latin: "Tilia cordata" },
+  "Lomatium":             { latin: "Lomatium dissectum" },
+  "Lycopus":              { latin: "Lycopus europaeus", common: "Bugleweed", pbKeywords: ["BUGLEWEED"] },
+
+  // M
+  "Maca":                 { latin: "Lepidium meyenii" },
+  "Marshmallow":          { latin: "Althaea officinalis", pbKeywords: ["MARSHMALLOW"] },
+  "Meadowsweet":          { latin: "Filipendula ulmaria" },
+  "Milk Thistle":         { latin: "Silybum marianum" },
+  "Motherwort":           { latin: "Leonurus cardiaca" },
+  "Mugwort":              { latin: "Artemisia vulgaris" },
+  "Mullein":              { latin: "Verbascum thapsus", pbKeywords: ["MULLEIN", "LEAF"] },
+  "Mullein Root":         { latin: "Verbascum thapsus", pbKeywords: ["MULLEIN", "ROOT"] },
+
+  // N
+  "Nettle Leaf":          { latin: "Urtica dioica", pbKeywords: ["NETTLE", "HERB"] },
+  "Nettle Root":          { latin: "Urtica dioica", pbKeywords: ["NETTLE", "ROOT"] },
+
+  // O
+  "Oak":                  { latin: "Quercus robur", common: "White Oak Bark" },
+  "Ocimum":               { latin: "Ocimum tenuiflorum", common: "Holy Basil", pbKeywords: ["HOLY", "BASIL"] },
+  "Olive Leaf":           { latin: "Olea europaea" },
+  "Orange Peel":          { latin: "Citrus sinensis" },
+  "Oregano":              { latin: "Origanum vulgare" },
+  "Oregon Grape":         { latin: "Mahonia aquifolium" },
+  "Osha":                 { latin: "Ligusticum porteri" },
+
+  // P
+  "Parsley":              { latin: "Petroselinum crispum" },
+  "Passion Flower":       { latin: "Passiflora incarnata", pbKeywords: ["PASSIONFLOWER"] },
+  "Peony":                { latin: "Paeonia lactiflora", common: "White Peony Root" },
+  "Peppermint":           { latin: "Mentha piperita" },
+  "Periwinkle":           { latin: "Vinca minor" },
+  "Plantain":             { latin: "Plantago major" },
+  "Poppy":                { latin: "Eschscholzia californica", common: "California Poppy", pbKeywords: ["CALIFORNIA", "POPPY"] },
+
+  // R
+  "Raspberry Leaf":       { latin: "Rubus idaeus" },
+  "Red Clover":           { latin: "Trifolium pratense" },
+  "Rheum":                { latin: "Rheum palmatum", common: "Turkey Rhubarb", pbKeywords: ["TURKEY", "RHUBARB"] },
+  "Rhodiola":             { latin: "Rhodiola rosea" },
+  "Rose":                 { latin: "Rosa damascena" },
+  "Rosemary":             { latin: "Salvia rosmarinus" },
+  "Rue":                  { latin: "Ruta graveolens" },
+  "Rumex":                { latin: "Rumex crispus", common: "Yellow Dock", pbKeywords: ["YELLOW", "DOCK"] },
+
+  // S
+  "Sage":                 { latin: "Salvia officinalis" },
+  "Sarsaparilla":         { latin: "Smilax ornata" },
+  "Schisandra":           { latin: "Schisandra chinensis" },
+  "Scutellaria":          { latin: "Scutellaria lateriflora", common: "Skullcap", pbKeywords: ["SKULLCAP", "HERB"] },
+  "Self Heal":            { latin: "Prunella vulgaris" },
+  "Shatavari":            { latin: "Asparagus racemosus" },
+  "Shepherd's Purse":     { latin: "Capsella bursa-pastoris" },
+  "Solomon's Seal":       { latin: "Polygonatum biflorum" },
+  "Spikenard":            { latin: "Aralia racemosa" },
+  "Spilanthes":           { latin: "Acmella oleracea", common: "Toothache Plant" },
+  "Stone Root":           { latin: "Collinsonia canadensis" },
+
+  // T
+  "Thyme":                { latin: "Thymus vulgaris" },
+  "Tulsi":                { latin: "Ocimum tenuiflorum", common: "Holy Basil", pbKeywords: ["TULSI"] },
+
+  // V
+  "Valerian":             { latin: "Valeriana officinalis" },
+  "Vitex":                { latin: "Vitex agnus-castus", common: "Chaste Tree" },
+
+  // W
+  "White Oak":            { latin: "Quercus alba", pbKeywords: ["WHITE", "OAK"] },
+  "Wild Lettuce":         { latin: "Lactuca virosa" },
+  "Wild Yam":             { latin: "Dioscorea villosa" },
+
+  // Y
+  "Yarrow":               { latin: "Achillea millefolium" },
+};
+
 // Master herb list — matches actual inventory. These are the only valid herb names.
 // All voice input is corrected/fuzzy-matched to one of these before saving.
 export const HERB_LIST = [

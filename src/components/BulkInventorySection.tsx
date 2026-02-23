@@ -195,7 +195,6 @@ export function BulkInventorySection() {
           latin_name: editLatinName.trim() || null,
           pinyin_name: editPinyinName.trim() || null,
           preferred_name: editPreferredName,
-          low_threshold_lb: editLowThreshold,
         });
       }
 
@@ -648,8 +647,9 @@ function BulkItemCard({
 }: BulkItemCardProps) {
   const qty = Number(item.quantity ?? 1);
   const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
-  const isLow = qty > 0 && qty <= herbThreshold;
-  const isOut = qty <= 0;
+  const isOrdered = item.status === 'ordered';
+  const isLow = !isOrdered && qty > 0 && qty <= herbThreshold;
+  const isOut = !isOrdered && qty <= 0;
 
   return (
     <>
@@ -787,7 +787,8 @@ function BulkItemCard({
       <Card
         className={cn(
           "transition-colors",
-          isOut ? "border-red-500/30 bg-red-500/5"
+          isOrdered ? "border-blue-500/30 bg-blue-500/5"
+          : isOut ? "border-red-500/30 bg-red-500/5"
           : isLow ? "border-yellow-500/30 bg-yellow-500/5"
           : "border-green-500/30 bg-green-500/5"
         )}
@@ -818,7 +819,7 @@ function BulkItemCard({
               </span>
             )}
             {/* Quantity badge */}
-            <LbsBadge qty={qty} lowThreshold={herbThreshold} />
+            <LbsBadge qty={qty} lowThreshold={herbThreshold} isOrdered={isOrdered} />
             {/* Actions */}
             <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={onStartEdit}>
               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -836,21 +837,23 @@ function BulkItemCard({
   );
 }
 
-function LbsBadge({ qty, lowThreshold }: { qty: number; lowThreshold: number }) {
+function LbsBadge({ qty, lowThreshold, isOrdered }: { qty: number; lowThreshold: number; isOrdered?: boolean }) {
   const isOut = qty <= 0;
   const isLow = !isOut && qty <= lowThreshold;
   return (
     <span
       className={cn(
         "rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap",
-        isOut
+        isOrdered
+          ? "bg-blue-500/20 text-blue-700 dark:text-blue-400"
+          : isOut
           ? "bg-red-500/20 text-red-700 dark:text-red-400"
           : isLow
           ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400"
           : "bg-green-500/20 text-green-700 dark:text-green-400"
       )}
     >
-      {isOut ? 'OUT' : `${formatLbs(qty)} lb`}
+      {isOrdered ? 'ORDERED' : isOut ? 'OUT' : `${formatLbs(qty)} lb`}
     </span>
   );
 }

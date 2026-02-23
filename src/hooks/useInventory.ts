@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 
 export type InventoryLocation = 'backstock' | 'tincture' | 'clinic' | 'bulk' | 'bulk_backstock';
-export type InventoryStatus = 'full' | 'low' | 'out';
+export type InventoryStatus = 'full' | 'low' | 'out' | 'ordered';
 
 export interface Herb {
   id: string;
@@ -129,16 +129,35 @@ export function useAddHerb() {
 
 export function useUpdateHerb() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; name?: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string }) => {
-      const { data, error } = await supabase
+    mutationFn: async ({ id, name, common_name, latin_name, pinyin_name, preferred_name, low_threshold_lb, notes }: { id: string; name?: string; common_name?: string | null; latin_name?: string | null; pinyin_name?: string | null; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string | null }) => {
+      // Build payload with only defined fields; coerce types to match DB expectations
+      const payload: Record<string, unknown> = {};
+      if (name !== undefined) payload.name = name;
+      if (common_name !== undefined) payload.common_name = common_name || null;
+      if (latin_name !== undefined) payload.latin_name = latin_name || null;
+      if (pinyin_name !== undefined) payload.pinyin_name = pinyin_name || null;
+      if (preferred_name !== undefined) payload.preferred_name = preferred_name || null;
+      // low_threshold_lb excluded — PostgREST schema cache doesn't reflect this column yet
+      if (notes !== undefined) payload.notes = notes || null;
+
+      // Do the update without select — avoids RLS RETURNING issues
+      const { error: updateError } = await supabase
         .from('herbs')
-        .update(updates)
-        .eq('id', id)
+        .update(payload)
+        .eq('id', id);
+      if (updateError) {
+        console.error('updateHerb error', updateError, 'payload', payload);
+        throw updateError;
+      }
+      // Fetch the updated row separately
+      const { data, error: fetchError } = await supabase
+        .from('herbs')
         .select()
+        .eq('id', id)
         .single();
-      if (error) throw error;
+      if (fetchError) throw fetchError;
       return data as Herb;
     },
     onSuccess: () => {
@@ -188,12 +207,20 @@ export function useAddInventory() {
 
 export function useUpdateInventory() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<InventoryItem> & { id: string }) => {
+    mutationFn: async ({ id, status, quantity, notes, tincture_started_at, tincture_ready_at }: Partial<InventoryItem> & { id: string }) => {
+      // Only send writable columns — never send herbs join, user_id, created_at, updated_at
+      const payload: Record<string, unknown> = {};
+      if (status !== undefined) payload.status = status;
+      if (quantity !== undefined) payload.quantity = quantity;
+      if (notes !== undefined) payload.notes = notes;
+      if (tincture_started_at !== undefined) payload.tincture_started_at = tincture_started_at;
+      if (tincture_ready_at !== undefined) payload.tincture_ready_at = tincture_ready_at;
+
       const { data, error } = await supabase
         .from('inventory')
-        .update(updates)
+        .update(payload)
         .eq('id', id)
         .select('*, herbs(*)')
         .single();
@@ -338,7 +365,7 @@ export function useRemoveInventoryByHerbName() {
 
 export function useUpdateInventoryByHerbName() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ herbName, location, status }: { herbName: string; location: InventoryLocation; status: InventoryStatus }) => {
       // First find the inventory item by herb name and location
@@ -347,12 +374,12 @@ export function useUpdateInventoryByHerbName() {
         .select('id, herbs!inner(name)')
         .eq('location', location)
         .ilike('herbs.name', herbName);
-      
+
       if (findError) throw findError;
       if (!inventoryItems || inventoryItems.length === 0) {
         throw new Error(`${herbName} not found in ${location}`);
       }
-      
+
       // Update the inventory item status
       const { data, error: updateError } = await supabase
         .from('inventory')
@@ -360,9 +387,46 @@ export function useUpdateInventoryByHerbName() {
         .eq('id', inventoryItems[0].id)
         .select('*, herbs(*)')
         .single();
-      
+
       if (updateError) throw updateError;
       return { herbName, location, status, data };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+// Update a herb's low_threshold_lb (reorder trigger) by herb_id
+export function useUpdateLowThreshold() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ herbId, low_threshold_lb }: { herbId: string; low_threshold_lb: number }) => {
+      const { error } = await supabase
+        .from('herbs')
+        .update({ low_threshold_lb })
+        .eq('id', herbId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['herbs'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+// Mark multiple inventory items as 'ordered'
+export function useMarkAsOrdered() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (inventoryIds: string[]) => {
+      const { error } = await supabase
+        .from('inventory')
+        .update({ status: 'ordered' })
+        .in('id', inventoryIds);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });

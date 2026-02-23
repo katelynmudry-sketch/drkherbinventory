@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Package, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Package, Plus, ShoppingCart, Trash2, X, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,11 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { useInventory } from '@/hooks/useInventory';
+import { useInventory, useUpdateLowThreshold, useMarkAsOrdered } from '@/hooks/useInventory';
 import {
   useSuppliers,
   useAddSupplier,
-  useUpdateSupplier,
   useDeleteSupplier,
   useHerbPricing,
   useAddHerbPrice,
@@ -32,9 +31,19 @@ function fmt(n: number) {
   return n.toLocaleString('en-CA', { style: 'currency', currency: 'CAD' });
 }
 
+// ─── Threshold Filter Toggle ──────────────────────────────────────────────────
+
+type ThresholdKey = 'out' | '0.25' | '0.5';
+
+const THRESHOLD_OPTIONS: { key: ThresholdKey; label: string; description: string }[] = [
+  { key: 'out', label: 'Out', description: 'Status = out (quantity ≤ 0)' },
+  { key: '0.25', label: '≤ 0.25 lb', description: 'Low stock at or under a quarter pound' },
+  { key: '0.5', label: '≤ 0.5 lb', description: 'Low stock at or under half a pound' },
+];
+
 // ─── Reorder Qty Cell ─────────────────────────────────────────────────────────
 
-function ReorderQtyCell({ herbName, value, onChange }: { herbName: string; value: number; onChange: (v: number) => void }) {
+function ReorderQtyCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(String(value));
 
@@ -72,7 +81,47 @@ function ReorderQtyCell({ herbName, value, onChange }: { herbName: string; value
   );
 }
 
-// ─── Add Price Dialog ─────────────────────────────────────────────────────────
+// ─── Threshold (Reorder Trigger) Cell ────────────────────────────────────────
+
+function ThresholdCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(String(value));
+
+  const commit = () => {
+    const n = parseFloat(local);
+    if (!isNaN(n) && n > 0) onChange(n);
+    else setLocal(String(value));
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <Input
+        type="number"
+        min="0.25"
+        step="0.25"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+        className="w-20 h-7 text-sm"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <button
+      className="text-sm font-medium underline decoration-dashed underline-offset-2 hover:text-amber-600"
+      onClick={() => { setLocal(String(value)); setEditing(true); }}
+      title="Click to edit reorder trigger"
+    >
+      {value} lb
+    </button>
+  );
+}
+
+// ─── Add Price Row ────────────────────────────────────────────────────────────
 
 function AddPriceRow({ supplierId, existingHerbs, onClose }: {
   supplierId: string;
@@ -92,14 +141,8 @@ function AddPriceRow({ supplierId, existingHerbs, onClose }: {
     const price = parseFloat(pricePerLb);
     if (isNaN(price) || price <= 0) { toast.error('Invalid price'); return; }
 
-    let pkg_size: number | null = null;
-    let pkg_price: number | null = null;
-
-    if (packageSizeG && packagePrice) {
-      pkg_size = parseInt(packageSizeG);
-      pkg_price = parseFloat(packagePrice);
-      // Recompute price_per_lb from package data if both provided
-    }
+    const pkg_size = packageSizeG ? parseInt(packageSizeG) : null;
+    const pkg_price = packagePrice ? parseFloat(packagePrice) : null;
 
     try {
       await addPrice.mutateAsync({
@@ -241,12 +284,22 @@ const Ordering = () => {
   const [showManage, setShowManage] = useState(false);
   const [suggestion, setSuggestion] = useState<OrderSuggestion | null>(null);
 
+  // Threshold filter — which quantity buckets to include in the order list
+  const [activeFilters, setActiveFilters] = useState<Set<ThresholdKey>>(new Set(['out']));
+
+  // Manual overrides — session-only, reset on filter change
+  const [manualAdds, setManualAdds] = useState<Set<string>>(new Set());
+  const [manualRemoveIds, setManualRemoveIds] = useState<Set<string>>(new Set());
+  const [addHerbValue, setAddHerbValue] = useState('');
+
   // Data
   const { data: inventory = [] } = useInventory('bulk');
   const { data: suppliers = [] } = useSuppliers();
   const { data: pricing = [] } = useHerbPricing();
   const { data: reorderQtys = [] } = useReorderQtys();
   const upsertReorderQty = useUpsertReorderQty();
+  const updateLowThreshold = useUpdateLowThreshold();
+  const markAsOrdered = useMarkAsOrdered();
 
   // Supplier management state
   const [newSupplierName, setNewSupplierName] = useState('');
@@ -254,24 +307,104 @@ const Ordering = () => {
   const addSupplier = useAddSupplier();
   const deleteSupplier = useDeleteSupplier();
 
-  // Out bulk herbs
-  const outHerbs = inventory.filter(item => item.status === 'out');
+  // ── Compute the order list ────────────────────────────────────────────────
+  const orderItems = useMemo(() => {
+    const included = new Map<string, (typeof inventory)[0] & { _manuallyAdded?: boolean }>();
 
-  // Pricing lookup: herb_name → { supplierId → HerbPricing }
-  const pricingByHerb = new Map<string, Map<string, HerbPricing>>();
-  for (const p of pricing) {
-    if (!pricingByHerb.has(p.herb_name)) pricingByHerb.set(p.herb_name, new Map());
-    pricingByHerb.get(p.herb_name)!.set(p.supplier_id, p);
-  }
+    for (const item of inventory) {
+      if (manualRemoveIds.has(item.id)) continue;
 
-  const reorderMap = new Map(reorderQtys.map(r => [r.herb_name, r.quantity_lb]));
+      const qty = Number(item.quantity);
+      const matchesOut = activeFilters.has('out') && item.status === 'out';
+      const matches025 = activeFilters.has('0.25') && qty > 0 && qty <= 0.25;
+      const matches05 = activeFilters.has('0.5') && qty > 0 && qty <= 0.5;
+
+      if (matchesOut || matches025 || matches05) {
+        included.set(item.id, item);
+      }
+    }
+
+    // Manually added herbs
+    for (const herbName of manualAdds) {
+      const item = inventory.find(i => (i.herbs?.name ?? '') === herbName);
+      if (item && !manualRemoveIds.has(item.id) && !included.has(item.id)) {
+        included.set(item.id, { ...item, _manuallyAdded: true });
+      }
+    }
+
+    return Array.from(included.values());
+  }, [inventory, activeFilters, manualAdds, manualRemoveIds]);
+
+  // Herbs available to add manually (bulk inventory herbs not already in the order list)
+  const orderItemIds = useMemo(() => new Set(orderItems.map(i => i.id)), [orderItems]);
+  const availableToAdd = useMemo(() =>
+    inventory
+      .filter(i => !orderItemIds.has(i.id))
+      .map(i => i.herbs?.name ?? '')
+      .filter(Boolean)
+      .sort()
+  , [inventory, orderItemIds]);
+
+  // Pricing lookup — keyed on lowercased herb_name for case-insensitive matching
+  const pricingByHerb = useMemo(() => {
+    const map = new Map<string, Map<string, HerbPricing>>();
+    for (const p of pricing) {
+      const key = p.herb_name.toLowerCase().trim();
+      if (!map.has(key)) map.set(key, new Map());
+      map.get(key)!.set(p.supplier_id, p);
+    }
+    return map;
+  }, [pricing]);
+
+  const reorderMap = useMemo(() => new Map(reorderQtys.map(r => [r.herb_name, r.quantity_lb])), [reorderQtys]);
+
+  const toggleFilter = (key: ThresholdKey) => {
+    setActiveFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        if (next.size === 1) return prev; // Keep at least one active
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    // Reset manual overrides when filter changes
+    setManualAdds(new Set());
+    setManualRemoveIds(new Set());
+    setAddHerbValue('');
+  };
+
+  const handleManualAdd = (herbName: string) => {
+    if (!herbName) return;
+    setManualAdds(prev => new Set([...prev, herbName]));
+    setAddHerbValue('');
+  };
+
+  const handleRemove = (itemId: string) => {
+    setManualRemoveIds(prev => new Set([...prev, itemId]));
+  };
 
   const handleCalculate = () => {
-    const outNames = outHerbs.map(i => i.herbs?.name ?? '').filter(Boolean);
+    const outNames = orderItems.map(i => i.herbs?.name ?? '').filter(Boolean);
     const result = computeOrderSuggestion(outNames, pricing, reorderQtys, suppliers);
     setSuggestion(result);
     if (result.orders.length === 0 && result.uncoveredHerbs.length > 0) {
-      toast.warning('No pricing data found for out herbs. Add prices in Manage Pricing below.');
+      toast.warning('No pricing data found. Add prices in Manage Pricing below.');
+    }
+  };
+
+  const handleMarkAllOrdered = async () => {
+    const ids = orderItems.map(i => i.id);
+    if (ids.length === 0) return;
+    try {
+      await markAsOrdered.mutateAsync(ids);
+      toast.success(`Marked ${ids.length} herb${ids.length !== 1 ? 's' : ''} as ordered`);
+      setManualAdds(new Set());
+      setManualRemoveIds(new Set());
+      setSuggestion(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to mark as ordered');
     }
   };
 
@@ -308,18 +441,56 @@ const Ordering = () => {
         {/* Section 1: Herbs to Order */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Herbs to Order
-              {outHerbs.length > 0 && (
-                <Badge variant="destructive" className="ml-1">{outHerbs.length} out</Badge>
-              )}
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Herbs to Order
+                {orderItems.length > 0 && (
+                  <Badge variant="destructive" className="ml-1">{orderItems.length}</Badge>
+                )}
+              </CardTitle>
+
+              {/* Threshold filter toggles */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1">Include:</span>
+                {THRESHOLD_OPTIONS.map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => toggleFilter(opt.key)}
+                    title={opt.description}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      activeFilters.has(opt.key)
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
+
           <CardContent>
-            {outHerbs.length === 0 ? (
+            {/* Manual add */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Add to list:</span>
+              <Select value={addHerbValue} onValueChange={handleManualAdd}>
+                <SelectTrigger className="h-8 w-52 text-sm">
+                  <SelectValue placeholder="Select a herb…" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {availableToAdd.map(h => (
+                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">(session only — no inventory change)</span>
+            </div>
+
+            {orderItems.length === 0 ? (
               <p className="text-muted-foreground text-sm py-4 text-center">
-                All bulk herbs are stocked — nothing to order!
+                No herbs match the current filter — nothing to order!
               </p>
             ) : (
               <>
@@ -328,27 +499,59 @@ const Ordering = () => {
                     <thead>
                       <tr className="text-left text-muted-foreground border-b">
                         <th className="px-3 pb-2 font-medium">Herb</th>
-                        <th className="px-3 pb-2 font-medium">Reorder Qty</th>
+                        <th className="px-3 pb-2 font-medium">On hand</th>
+                        <th className="px-3 pb-2 font-medium">
+                          Reorder trigger
+                          <span className="block text-xs font-normal opacity-70">low_threshold_lb</span>
+                        </th>
+                        <th className="px-3 pb-2 font-medium">Reorder qty</th>
                         {suppliers.map(s => (
                           <th key={s.id} className="px-3 pb-2 font-medium text-right">{s.name} ($/lb)</th>
                         ))}
-                        <th className="px-3 pb-2 font-medium text-right">Best Price</th>
+                        <th className="px-3 pb-2 font-medium text-right">Best price</th>
+                        <th className="px-3 pb-2 w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {outHerbs.map(item => {
+                      {orderItems.map(item => {
                         const herbName = item.herbs?.name ?? '';
+                        const qty = Number(item.quantity);
+                        const threshold = item.herbs?.low_threshold_lb ?? 0.25;
                         const qtyLb = reorderMap.get(herbName) ?? 1;
-                        const herbPricing = pricingByHerb.get(herbName);
+                        const herbPricing = pricingByHerb.get(herbName.toLowerCase().trim());
                         const prices = herbPricing ? Array.from(herbPricing.values()) : [];
                         const minPrice = prices.length > 0 ? Math.min(...prices.map(p => p.price_per_lb)) : null;
 
                         return (
                           <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
-                            <td className="px-3 py-2 font-medium">{herbName}</td>
+                            <td className="px-3 py-2 font-medium">
+                              <span className="flex items-center gap-1.5">
+                                {herbName}
+                                {item._manuallyAdded && (
+                                  <Badge variant="outline" className="text-xs py-0 px-1.5 text-blue-600 border-blue-300">added</Badge>
+                                )}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {item.status === 'out' ? (
+                                <Badge variant="destructive" className="text-xs">OUT</Badge>
+                              ) : (
+                                `${qty} lb`
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {item.herbs ? (
+                                <ThresholdCell
+                                  value={threshold}
+                                  onChange={async (v) => {
+                                    await updateLowThreshold.mutateAsync({ herbId: item.herb_id, low_threshold_lb: v });
+                                    toast.success(`Reorder trigger updated for ${herbName}`);
+                                  }}
+                                />
+                              ) : '—'}
+                            </td>
                             <td className="px-3 py-2">
                               <ReorderQtyCell
-                                herbName={herbName}
                                 value={qtyLb}
                                 onChange={async (v) => {
                                   await upsertReorderQty.mutateAsync({ herb_name: herbName, quantity_lb: v });
@@ -371,6 +574,17 @@ const Ordering = () => {
                                 <span className="text-muted-foreground text-xs">no pricing</span>
                               )}
                             </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                title="Remove from order list (session only)"
+                                onClick={() => handleRemove(item.id)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -378,13 +592,22 @@ const Ordering = () => {
                   </table>
                 </div>
 
-                <div className="mt-4 flex items-center gap-3">
+                <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Button onClick={handleCalculate} className="gap-2">
                     <ShoppingCart className="h-4 w-4" />
                     Calculate Optimal Order
                   </Button>
+                  <Button
+                    onClick={handleMarkAllOrdered}
+                    variant="outline"
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    disabled={markAsOrdered.isPending}
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                    Mark All as Ordered
+                  </Button>
                   <span className="text-xs text-muted-foreground">
-                    Click herb quantities to edit. Changes save automatically.
+                    Click values to edit. Removes are session-only.
                   </span>
                 </div>
               </>
@@ -405,7 +628,7 @@ const Ordering = () => {
             {suggestion.orders.length === 0 && suggestion.uncoveredHerbs.length > 0 && (
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="pt-4">
-                  <p className="text-sm text-amber-800">No pricing data found for any out herbs. Add prices in Manage Pricing below.</p>
+                  <p className="text-sm text-amber-800">No pricing data found for any listed herbs. Add prices in Manage Pricing below.</p>
                 </CardContent>
               </Card>
             )}

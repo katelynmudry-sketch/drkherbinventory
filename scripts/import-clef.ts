@@ -12,7 +12,7 @@ import XLSX from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { findBestHerbMatch, HERB_LIST } from '../src/lib/herbCorrection';
+import { HERB_LIST, HERB_METADATA } from '../src/lib/herbCorrection';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,26 +23,22 @@ const OUTPUT_PATH = path.resolve(__dirname, 'clef-import.sql');
 const USER_ID = 'b54fe6fd-fdc2-4aff-b126-3cc267b5b2b4';
 const SUPPLIER_NAME = 'Clef des Champs';
 const SUPPLIER_URL = 'https://clefdeschamps.net';
-const MATCH_THRESHOLD = 0.5;
 
-// Grams per lb
 const GRAMS_PER_LB = 453.592;
 
 interface ClefRow {
   itemCode: string;
   description: string;
-  packageSizeG: number;   // 250 or 500
-  packagePrice: number;   // $ per package
-  pricePerLb: number;     // normalized
+  packageSizeG: number;
+  packagePrice: number;
+  pricePerLb: number;
 }
 
 function readClefSheet(): ClefRow[] {
   const wb = XLSX.readFile(XLSX_PATH);
   const ws = wb.Sheets['COMMANDE'];
   if (!ws) throw new Error('Sheet "COMMANDE" not found');
-
   const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null });
-
   const result: ClefRow[] = [];
 
   for (const row of rows) {
@@ -53,40 +49,62 @@ function readClefSheet(): ClefRow[] {
     const unitPrice = Number(row[6]);
 
     // Only bulk loose herb packages: codes like "401V-500", "417V-250"
-    // Skip: tinctures (codes ending in F/S with ML size), caps, teas in retail sizes, blends
     if (!itemCode.match(/^\d+V-\d+$/)) continue;
     if (!sizeStr.includes('GR')) continue;
     if (unitStr !== 'UNIT') continue;
     if (!unitPrice || unitPrice <= 0) continue;
 
-    // Extract gram size (250 or 500)
     const grMatch = sizeStr.match(/(\d+)\s*GR/);
     if (!grMatch) continue;
     const packageSizeG = parseInt(grMatch[1]);
     if (packageSizeG !== 250 && packageSizeG !== 500) continue;
 
-    // Skip obvious non-herb items (spice blends, kelp, etc.)
-    if (/COUSCOUS|CURRY|GRILLING|SPAGHETTI|GARAM|HERBES PROVENCE|KELP|PSYLLIUM BARK/i.test(description)) continue;
+    // Skip obvious non-herb blends
+    if (/COUSCOUS|CURRY|GRILLING|SPAGHETTI|GARAM|HERBES PROVENCE|KELP|PSYLLIUM BARK|ENERGY TEA|GARGANTUA|SERENITEA/i.test(description)) continue;
 
     const pricePerLb = unitPrice / (packageSizeG / GRAMS_PER_LB);
-
-    result.push({
-      itemCode,
-      description,
-      packageSizeG,
-      packagePrice: unitPrice,
-      pricePerLb,
-    });
+    result.push({ itemCode, description, packageSizeG, packagePrice: unitPrice, pricePerLb });
   }
-
   return result;
 }
 
-function stripClefSuffixes(name: string): string {
-  return name
-    .replace(/\b(organic|pwdr|powder|leaf|leaves|root|roots|seed|seeds|berry|berries|herb|flower|flowers|bark|whole|cut|grd|ground|sliced|granulated)\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+// Part synonyms for Clef descriptions
+const LEAF_SYNONYMS = ['LEAF', 'LEAVES', 'FEUILLE', 'HERB', 'AERIAL', 'OATSTRAW'];
+const ROOT_SYNONYMS = ['ROOT', 'ROOTS', 'RHIZOME', 'RACINE'];
+const BARK_SYNONYMS = ['BARK', 'ECORCE'];
+const FLOWER_SYNONYMS = ['FLOWER', 'FLOWERS', 'FLEUR', 'BLOSSOM'];
+const SEED_SYNONYMS = ['SEED', 'SEEDS', 'BERRY', 'BERRIES', 'GRAINE'];
+
+const PART_MAP: Record<string, string[]> = {
+  'LEAF': LEAF_SYNONYMS,
+  'LEAVES': LEAF_SYNONYMS,
+  'ROOT': ROOT_SYNONYMS,
+  'ROOTS': ROOT_SYNONYMS,
+  'BARK': BARK_SYNONYMS,
+  'FLOWER': FLOWER_SYNONYMS,
+  'FLOWERS': FLOWER_SYNONYMS,
+  'SEED': SEED_SYNONYMS,
+  'SEEDS': SEED_SYNONYMS,
+};
+
+const IGNORE_WORDS = new Set(['AND', 'OF', 'THE', 'DE', 'DES', 'DU', 'LA', 'LE']);
+
+function herbToKeywordGroups(herbName: string): string[][] {
+  const meta = HERB_METADATA[herbName];
+  // Use clefKeywords if defined, else pbKeywords as fallback, else derive from name
+  const explicit = meta?.clefKeywords ?? meta?.pbKeywords;
+  if (explicit && explicit.length > 0) {
+    return explicit.map(kw => [kw.toUpperCase()]);
+  }
+  const words = herbName.toUpperCase().split(/\s+/).filter(w => !IGNORE_WORDS.has(w));
+  return words.map(word => PART_MAP[word] ?? [word]);
+}
+
+function descriptionMatchesHerb(desc: string, groups: string[][]): boolean {
+  const upper = desc.toUpperCase();
+  return groups.every(group =>
+    group.some(syn => new RegExp(`\\b${syn}\\b`).test(upper))
+  );
 }
 
 function main() {
@@ -94,24 +112,26 @@ function main() {
   const rows = readClefSheet();
   console.log(`Found ${rows.length} bulk herb rows`);
 
-  // For each herb, find best (cheapest $/lb) Clef entry
-  const herbToBestClef: Map<string, ClefRow> = new Map();
+  const herbGroups = HERB_LIST.map(h => ({ name: h, groups: herbToKeywordGroups(h) }));
 
-  for (const row of rows) {
-    const stripped = stripClefSuffixes(row.description);
-    const matched = findBestHerbMatch(stripped, MATCH_THRESHOLD);
-    if (!matched) {
-      console.log(`  No match: "${row.description}" (stripped: "${stripped}")`);
-      continue;
-    }
+  const herbToBest: Map<string, ClefRow> = new Map();
 
-    const existing = herbToBestClef.get(matched);
-    if (!existing || row.pricePerLb < existing.pricePerLb) {
-      herbToBestClef.set(matched, row);
+  for (const clefRow of rows) {
+    for (const { name, groups } of herbGroups) {
+      if (!descriptionMatchesHerb(clefRow.description, groups)) continue;
+      const existing = herbToBest.get(name);
+      if (!existing || clefRow.pricePerLb < existing.pricePerLb) {
+        herbToBest.set(name, clefRow);
+      }
     }
   }
 
-  console.log(`Matched ${herbToBestClef.size} herbs`);
+  console.log(`Matched ${herbToBest.size} herbs`);
+
+  console.log('\nMatches:');
+  for (const [herb, row] of Array.from(herbToBest.entries()).sort((a,b) => a[0].localeCompare(b[0]))) {
+    console.log(`  ${herb.padEnd(35)} ← ${row.description} ($${row.pricePerLb.toFixed(2)}/lb, ${row.packageSizeG}g @ $${row.packagePrice})`);
+  }
 
   const lines: string[] = [
     '-- Clef des Champs bulk herb price import',
@@ -133,15 +153,12 @@ function main() {
   ];
 
   let count = 0;
-  for (const [herbName, row] of Array.from(herbToBestClef.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [herbName, row] of Array.from(herbToBest.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
     const escapedName = herbName.replace(/'/g, "''");
     const escapedItemName = row.description.replace(/'/g, "''");
-    const pricePerLb = row.pricePerLb.toFixed(4);
-    const packagePrice = row.packagePrice.toFixed(4);
-
     lines.push(
       `  INSERT INTO public.herb_pricing (user_id, herb_name, supplier_id, price_per_lb, package_size_g, package_price, supplier_item_code, supplier_item_name, last_updated)`,
-      `  VALUES ('${USER_ID}', '${escapedName}', v_supplier_id, ${pricePerLb}, ${row.packageSizeG}, ${packagePrice}, '${row.itemCode}', '${escapedItemName}', CURRENT_DATE)`,
+      `  VALUES ('${USER_ID}', '${escapedName}', v_supplier_id, ${row.pricePerLb.toFixed(4)}, ${row.packageSizeG}, ${row.packagePrice.toFixed(4)}, '${row.itemCode}', '${escapedItemName}', CURRENT_DATE)`,
       `  ON CONFLICT (supplier_id, herb_name) DO UPDATE SET price_per_lb = EXCLUDED.price_per_lb, package_size_g = EXCLUDED.package_size_g, package_price = EXCLUDED.package_price, last_updated = CURRENT_DATE;`,
       '',
     );
@@ -153,8 +170,9 @@ function main() {
 
   fs.writeFileSync(OUTPUT_PATH, lines.join('\n'), 'utf8');
   console.log(`\nOutput written to: ${OUTPUT_PATH}`);
-  console.log(`\nUnmatched from HERB_LIST:`);
-  const matched = new Set(herbToBestClef.keys());
+
+  console.log('\nUnmatched from HERB_LIST:');
+  const matched = new Set(herbToBest.keys());
   HERB_LIST.filter(h => !matched.has(h)).forEach(h => console.log(`  - ${h}`));
 }
 

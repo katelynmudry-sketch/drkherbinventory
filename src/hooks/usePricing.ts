@@ -251,19 +251,20 @@ export function computeOrderSuggestion(
   const reorderMap = new Map(reorderQtys.map(r => [r.herb_name, r.quantity_lb]));
   const supplierMap = new Map(suppliers.map(s => [s.id, s]));
 
-  // Group pricing by herb_name
+  // Group pricing by herb_name (lowercased for case-insensitive lookup)
   const pricingByHerb = new Map<string, HerbPricing[]>();
   for (const p of pricing) {
-    const list = pricingByHerb.get(p.herb_name) ?? [];
+    const key = p.herb_name.toLowerCase().trim();
+    const list = pricingByHerb.get(key) ?? [];
     list.push(p);
-    pricingByHerb.set(p.herb_name, list);
+    pricingByHerb.set(key, list);
   }
 
   const ordersMap = new Map<string, SupplierOrder>(); // supplier_id → order
   const uncoveredHerbs: string[] = [];
 
   for (const herbName of outHerbNames) {
-    const options = pricingByHerb.get(herbName) ?? [];
+    const options = pricingByHerb.get(herbName.toLowerCase().trim()) ?? [];
     if (options.length === 0) {
       uncoveredHerbs.push(herbName);
       continue;
