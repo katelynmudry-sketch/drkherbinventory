@@ -32,7 +32,7 @@ declare global {
 
 interface VoiceRecognitionResult {
   transcript: string;
-  alternatives: string[]; // all hypotheses from the API, best-first
+  alternatives: string[];
   isListening: boolean;
   isSupported: boolean;
   startListening: () => void;
@@ -49,7 +49,6 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-  // Cleanup on unmount only
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
@@ -62,7 +61,6 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
   const createRecognition = useCallback(() => {
     if (!isSupported) return null;
 
-    // Abort and discard any existing instance before creating a new one
     if (recognitionRef.current) {
       recognitionRef.current.onresult = null;
       recognitionRef.current.onend = null;
@@ -78,37 +76,63 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 5;
 
+    let bestInterim = '';
+    let committedFinal = false;
+
     recognition.onresult = (event) => {
       let finalTranscript = '';
+      let interimTranscript = '';
       const finalAlternatives: string[] = [];
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         if (result.isFinal) {
           finalTranscript += result[0].transcript;
-          // Collect all alternatives for this final result segment
           for (let a = 0; a < result.length; a++) {
             const alt = result[a].transcript.trim();
             if (alt && !finalAlternatives.includes(alt)) {
               finalAlternatives.push(alt);
             }
           }
+        } else {
+          interimTranscript += result[0].transcript;
         }
       }
 
-      if (finalTranscript) {
-        setTranscript(finalTranscript);
+      if (interimTranscript.trim().length > bestInterim.length) {
+        bestInterim = interimTranscript.trim();
+      }
+
+      if (finalTranscript.trim()) {
+        committedFinal = true;
+        bestInterim = '';
+        setTranscript(finalTranscript.trim());
         setAlternatives(finalAlternatives);
       }
     };
 
     recognition.onend = () => {
+      if (!committedFinal && bestInterim) {
+        setTranscript(bestInterim);
+        setAlternatives([bestInterim]);
+      }
       setIsListening(false);
     };
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      setIsListening(false);
+      if (event.error === 'no-speech') {
+        // handled by onend
+        return;
+      }
+      // For network and other errors: commit interim if we have it
+      if (!committedFinal && bestInterim) {
+        committedFinal = true;
+        setTranscript(bestInterim);
+        setAlternatives([bestInterim]);
+        bestInterim = '';
+      }
+      // Don't call setIsListening here — onend always fires after onerror
     };
 
     return recognition;
@@ -130,7 +154,6 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
-      // isListening will be set to false by the onend handler
     }
   }, [isListening]);
 

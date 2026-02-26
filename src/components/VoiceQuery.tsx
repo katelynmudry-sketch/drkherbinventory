@@ -9,9 +9,16 @@ import { scanForHerbs } from '@/lib/herbCorrection';
 
 interface VoiceQueryProps {
   onResult?: (items: InventoryItem[]) => void;
+  activeTab?: string;
 }
 
-export function VoiceQuery({ onResult }: VoiceQueryProps) {
+// Locations shown in each tab
+const TAB_LOCATIONS: Record<string, string[]> = {
+  tinctures: ['clinic', 'backstock', 'tincture'],
+  bulk: ['bulk'],
+};
+
+export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProps) {
   const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const searchInventory = useSearchInventory();
   const [lastQuery, setLastQuery] = useState('');
@@ -40,11 +47,15 @@ export function VoiceQuery({ onResult }: VoiceQueryProps) {
       const responseTexts: string[] = [];
       const notFoundHerbs: string[] = [];
 
+      const allowedLocations = TAB_LOCATIONS[activeTab] ?? TAB_LOCATIONS['tinctures'];
+
       // Search for each herb
       for (const rawName of herbNames) {
         const searchTerm = rawName; // already corrected by scanForHerbs
-        const results = await searchInventory.mutateAsync(searchTerm);
-        
+        const allFound = await searchInventory.mutateAsync(searchTerm);
+        // Filter to only locations relevant to the current tab
+        const results = allFound.filter(r => allowedLocations.includes(r.location));
+
         if (results.length === 0) {
           notFoundHerbs.push(searchTerm);
         } else {

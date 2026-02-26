@@ -22,7 +22,11 @@ interface ParsedCommand {
   herbNames: string[];
 }
 
-export function VoiceHerbAdd() {
+interface VoiceHerbAddProps {
+  activeTab?: string;
+}
+
+export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
   const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const { data: existingHerbs } = useHerbs();
   const addHerb = useAddHerb();
@@ -48,7 +52,7 @@ export function VoiceHerbAdd() {
   useEffect(() => {
     if (transcript && transcript !== lastTranscript && !isListening) {
       setLastTranscript(transcript);
-      const parsed = parseVoiceCommand(transcript, alternatives, extraNames);
+      const parsed = parseVoiceCommand(transcript, alternatives, extraNames, activeTab);
       setParsedCommand(parsed);
       setHerbAvailability({});
     }
@@ -95,7 +99,7 @@ export function VoiceHerbAdd() {
     checkAvailability();
   }, [parsedCommand]);
 
-  const parseVoiceCommand = (command: string, alts: string[] = [], extra: string[] = []): ParsedCommand => {
+  const parseVoiceCommand = (command: string, alts: string[] = [], extra: string[] = [], tab: string = 'tinctures'): ParsedCommand => {
     const text = command.toLowerCase();
 
     // --- Command type detection ---
@@ -128,9 +132,13 @@ export function VoiceHerbAdd() {
       status = 'out';
     }
 
-    // Default location: low/out → clinic
+    // Default location based on active tab when not explicitly stated
+    const isBulkTab = tab === 'bulk';
     const location: InventoryLocation | null =
-      explicitLocation ?? ((status === 'low' || status === 'out') ? 'clinic' : null);
+      explicitLocation ??
+      (isBulkTab
+        ? 'bulk'
+        : (status === 'low' || status === 'out') ? 'clinic' : null);
 
     // --- Herb extraction via scan-and-match (Option C) ---
     // Strip known command/structural words but keep everything else as candidate tokens.
@@ -219,9 +227,9 @@ export function VoiceHerbAdd() {
       return;
     }
 
-    const location = parsedCommand.location || 'backstock';
+    const location = parsedCommand.location || (activeTab === 'bulk' ? 'bulk' : 'backstock');
     const status = parsedCommand.status || 'full';
-    
+
     setIsProcessing(true);
     let successCount = 0;
     let errorCount = 0;
@@ -425,15 +433,20 @@ export function VoiceHerbAdd() {
           </Button>
           
           <p className="text-xs text-muted-foreground text-center max-w-xs">
-            {isListening 
-              ? "Listening... Say something like:" 
-              : "Tap and say:"} 
-            <span className="block italic mt-1">
-              "Add to backstock low Yarrow, Nettle"
-            </span>
-            <span className="block italic">
-              "Change tincture Damiana to out"
-            </span>
+            {isListening
+              ? "Listening... Say something like:"
+              : "Tap and say:"}
+            {activeTab === 'bulk' ? (
+              <>
+                <span className="block italic mt-1">"Add bulk low Yarrow, Nettle"</span>
+                <span className="block italic">"Change bulk Damiana to out"</span>
+              </>
+            ) : (
+              <>
+                <span className="block italic mt-1">"Add to backstock low Yarrow, Nettle"</span>
+                <span className="block italic">"Change tincture Damiana to out"</span>
+              </>
+            )}
           </p>
         </div>
 

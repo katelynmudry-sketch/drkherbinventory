@@ -8,6 +8,7 @@ import { VoiceQuery } from '@/components/VoiceQuery';
 import { VoiceHerbAdd } from '@/components/VoiceHerbAdd';
 import { InventorySection } from '@/components/InventorySection';
 import { BulkInventorySection } from '@/components/BulkInventorySection';
+import { TinctureRestockPanel } from '@/components/TinctureRestockPanel';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { AuthForm } from '@/components/AuthForm';
 import { useAuth } from '@/hooks/useAuth';
@@ -114,8 +115,8 @@ const Index = () => {
         <section>
           <h2 className="mb-3 text-lg font-semibold">Voice Controls</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            <VoiceQuery />
-            <VoiceHerbAdd />
+            <VoiceQuery activeTab={activeTab} />
+            <VoiceHerbAdd activeTab={activeTab} />
           </div>
         </section>
 
@@ -135,6 +136,7 @@ const Index = () => {
                   />
                 </div>
               </div>
+              <TinctureRestockPanel />
               <div className="grid gap-4 md:grid-cols-3">
                 <InventorySection
                   location="backstock"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2, CalendarIcon } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2, CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
   const [editHerbName, setEditHerbName] = useState('');
   const [showOutOnly, setShowOutOnly] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
@@ -186,6 +187,15 @@ export function InventorySection({ location, title, icon, description, searchQue
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+              onClick={() => setIsCollapsed(c => !c)}
+              title={isCollapsed ? 'Expand' : 'Collapse'}
+            >
+              {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
             {location === 'clinic' && (
               <Toggle
                 pressed={showOutOnly}
@@ -257,7 +267,7 @@ export function InventorySection({ location, title, icon, description, searchQue
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2 max-h-96 overflow-y-auto">
+      {!isCollapsed && <CardContent className="space-y-2 max-h-96 overflow-y-auto">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : filteredInventory.length === 0 ? (
@@ -288,7 +298,7 @@ export function InventorySection({ location, title, icon, description, searchQue
             />
           ))
         )}
-      </CardContent>
+      </CardContent>}
     </Card>
   );
 }
