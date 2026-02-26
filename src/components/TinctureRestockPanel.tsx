@@ -18,10 +18,23 @@ export function TinctureRestockPanel() {
   const tinctureByHerbId = new Map<string, InventoryItem>();
   tinctureInventory.forEach(item => tinctureByHerbId.set(item.herb_id, item));
 
-  const rows = clinicNeeds.map(clinicItem => ({
-    clinicItem,
-    tinctureItem: tinctureByHerbId.get(clinicItem.herb_id) ?? null,
-  }));
+  // Also build a name-based lookup as fallback for mismatched herb_id records
+  const tinctureByName = new Map<string, InventoryItem>();
+  tinctureInventory.forEach(item => {
+    if (item.herbs) {
+      const key = getDisplayName(item.herbs).toLowerCase().trim();
+      tinctureByName.set(key, item);
+    }
+  });
+
+  const rows = clinicNeeds.map(clinicItem => {
+    const byId = tinctureByHerbId.get(clinicItem.herb_id) ?? null;
+    if (byId) return { clinicItem, tinctureItem: byId };
+    // Fallback: match by display name (handles herb_id mismatches from duplicate herb records)
+    const clinicName = clinicItem.herbs ? getDisplayName(clinicItem.herbs).toLowerCase().trim() : '';
+    const byName = clinicName ? (tinctureByName.get(clinicName) ?? null) : null;
+    return { clinicItem, tinctureItem: byName };
+  });
 
   const statusPriority: Record<string, number> = { out: 0, low: 1 };
   rows.sort((a, b) => {

@@ -15,6 +15,7 @@ interface SpeechRecognitionInstance extends EventTarget {
   interimResults: boolean;
   lang: string;
   maxAlternatives: number;
+  onstart: (() => void) | null;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
   onend: (() => void) | null;
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
@@ -62,6 +63,7 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     if (!isSupported) return null;
 
     if (recognitionRef.current) {
+      recognitionRef.current.onstart = null;
       recognitionRef.current.onresult = null;
       recognitionRef.current.onend = null;
       recognitionRef.current.onerror = null;
@@ -78,6 +80,10 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
 
     let bestInterim = '';
     let committedFinal = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
@@ -148,7 +154,6 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     setTranscript('');
     setAlternatives([]);
     recognition.start();
-    setIsListening(true);
   }, [isListening, isSupported, createRecognition]);
 
   const stopListening = useCallback(() => {
