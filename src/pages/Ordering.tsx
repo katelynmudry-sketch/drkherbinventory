@@ -755,6 +755,12 @@ const Ordering = () => {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border bg-muted/30">
+                        <td colSpan={4} className="py-2 px-0 font-semibold text-right pr-3">Order Total</td>
+                        <td className="py-2 text-right font-bold text-primary">{fmt(order.total)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </CardContent>
               </Card>
@@ -855,7 +861,8 @@ const Ordering = () => {
                 <p className="font-medium">Bulk import from your supplier spreadsheets:</p>
                 <p>1. Run <code className="bg-background px-1 rounded">npx tsx scripts/import-pacific-botanicals.ts</code></p>
                 <p>2. Run <code className="bg-background px-1 rounded">npx tsx scripts/import-clef.ts</code></p>
-                <p>3. Review the generated SQL files in <code className="bg-background px-1 rounded">scripts/</code>, then run them in your Supabase SQL Editor.</p>
+                <p>3. Run <code className="bg-background px-1 rounded">npx tsx scripts/import-mountain-rose.ts</code></p>
+                <p>4. Review the generated SQL files in <code className="bg-background px-1 rounded">scripts/</code>, then run them in your Supabase SQL Editor.</p>
               </div>
             </CardContent>
           )}

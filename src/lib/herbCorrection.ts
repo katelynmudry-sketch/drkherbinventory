@@ -9,6 +9,7 @@ export interface HerbMeta {
   common?: string;      // English common name (if canonical name is Latin)
   pbKeywords?: string[]; // Words that MUST appear in a PB description to match
   clefKeywords?: string[]; // Words that MUST appear in a Clef description to match
+  mrhKeywords?: string[]; // Words that MUST appear in a Mountain Rose description to match
 }
 
 export const HERB_METADATA: Record<string, HerbMeta> = {
@@ -19,7 +20,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Angelica":             { latin: "Angelica archangelica" },
   "Anise":                { latin: "Pimpinella anisum" },
   "Artichoke":            { latin: "Cynara cardunculus" },
-  "Artemisia":            { latin: "Artemisia annua", common: "Wormwood" },
+  "Artemisia":            { latin: "Artemisia annua", common: "Wormwood", mrhKeywords: ["WORMWOOD"] },
   "Ashwagandha":          { latin: "Withania somnifera" },
   "Astragalus":           { latin: "Astragalus membranaceus" },
   "Avena":                { latin: "Avena sativa", common: "Oatstraw", pbKeywords: ["OATSTRAW"] },
@@ -33,7 +34,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Birch Leaf":           { latin: "Betula pendula" },
   "Black Cohosh":         { latin: "Actaea racemosa" },
   "Black Haw":            { latin: "Viburnum prunifolium", pbKeywords: ["BLACK", "HAW"] },
-  "Black Pepper":         { latin: "Piper nigrum" },
+  "Black Pepper":         { latin: "Piper nigrum", mrhKeywords: ["PEPPERCORN", "BLACK"] },
   "Black Walnut":         { latin: "Juglans nigra" },
   "Blessed Thistle":      { latin: "Cnicus benedictus" },
   "Blue Cohosh":          { latin: "Caulophyllum thalictroides" },
@@ -56,7 +57,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Cleavers":             { latin: "Galium aparine" },
   "Comfrey Root":         { latin: "Symphytum officinale" },
   "Couch Grass":          { latin: "Elymus repens" },
-  "Cramp Bark":           { latin: "Viburnum opulus", pbKeywords: ["CRAMPBARK"] },
+  "Cramp Bark":           { latin: "Viburnum opulus", pbKeywords: ["CRAMPBARK"], mrhKeywords: ["CRAMP", "BARK"] },
 
   // D
   "Damiana":              { latin: "Turnera diffusa" },
@@ -92,7 +93,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Hops":                 { latin: "Humulus lupulus" },
   "Horse Chestnut":       { latin: "Aesculus hippocastanum", pbKeywords: ["HORSE", "CHESTNUT"] },
   "Horsetail":            { latin: "Equisetum arvense" },
-  "Hypericum":            { latin: "Hypericum perforatum", common: "St. John's Wort", pbKeywords: ["ST", "JOHNS", "WORT"] },
+  "Hypericum":            { latin: "Hypericum perforatum", common: "St. John's Wort", pbKeywords: ["ST", "JOHNS", "WORT"], mrhKeywords: ["ST", "JOHN"] },
   "Hyssop":               { latin: "Hyssopus officinalis" },
 
   // I
@@ -124,7 +125,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Mullein Root":         { latin: "Verbascum thapsus", pbKeywords: ["MULLEIN", "ROOT"] },
 
   // N
-  "Nettle Leaf":          { latin: "Urtica dioica", pbKeywords: ["NETTLE", "HERB"] },
+  "Nettle Leaf":          { latin: "Urtica dioica", pbKeywords: ["NETTLE", "HERB"], mrhKeywords: ["NETTLE", "LEAF"] },
   "Nettle Root":          { latin: "Urtica dioica", pbKeywords: ["NETTLE", "ROOT"] },
 
   // O
@@ -159,7 +160,7 @@ export const HERB_METADATA: Record<string, HerbMeta> = {
   "Sage":                 { latin: "Salvia officinalis" },
   "Sarsaparilla":         { latin: "Smilax ornata" },
   "Schisandra":           { latin: "Schisandra chinensis" },
-  "Scutellaria":          { latin: "Scutellaria lateriflora", common: "Skullcap", pbKeywords: ["SKULLCAP", "HERB"] },
+  "Scutellaria":          { latin: "Scutellaria lateriflora", common: "Skullcap", pbKeywords: ["SKULLCAP", "HERB"], mrhKeywords: ["SKULLCAP"] },
   "Self Heal":            { latin: "Prunella vulgaris" },
   "Shatavari":            { latin: "Asparagus racemosus" },
   "Shepherd's Purse":     { latin: "Capsella bursa-pastoris" },
