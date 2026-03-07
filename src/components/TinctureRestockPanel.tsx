@@ -18,22 +18,32 @@ export function TinctureRestockPanel() {
   const tinctureByHerbId = new Map<string, InventoryItem>();
   tinctureInventory.forEach(item => tinctureByHerbId.set(item.herb_id, item));
 
-  // Also build a name-based lookup as fallback for mismatched herb_id records
-  const tinctureByName = new Map<string, InventoryItem>();
+  // Also build name-based lookups as fallback for mismatched herb_id records
+  // (happens when same herb was added twice under different names)
+  const tinctureNames: Array<{ key: string; item: InventoryItem }> = [];
   tinctureInventory.forEach(item => {
     if (item.herbs) {
-      const key = getDisplayName(item.herbs).toLowerCase().trim();
-      tinctureByName.set(key, item);
+      tinctureNames.push({ key: getDisplayName(item.herbs).toLowerCase().trim(), item });
     }
   });
+
+  const findTinctureByName = (clinicHerb: InventoryItem['herbs']): InventoryItem | null => {
+    if (!clinicHerb) return null;
+    const clinicName = getDisplayName(clinicHerb).toLowerCase().trim();
+    // Exact match first
+    const exact = tinctureNames.find(t => t.key === clinicName);
+    if (exact) return exact.item;
+    // Partial match: one name starts with or contains the other (e.g. "lomatium" ↔ "lomatium dissectum")
+    const partial = tinctureNames.find(t =>
+      t.key.startsWith(clinicName) || clinicName.startsWith(t.key)
+    );
+    return partial?.item ?? null;
+  };
 
   const rows = clinicNeeds.map(clinicItem => {
     const byId = tinctureByHerbId.get(clinicItem.herb_id) ?? null;
     if (byId) return { clinicItem, tinctureItem: byId };
-    // Fallback: match by display name (handles herb_id mismatches from duplicate herb records)
-    const clinicName = clinicItem.herbs ? getDisplayName(clinicItem.herbs).toLowerCase().trim() : '';
-    const byName = clinicName ? (tinctureByName.get(clinicName) ?? null) : null;
-    return { clinicItem, tinctureItem: byName };
+    return { clinicItem, tinctureItem: findTinctureByName(clinicItem.herbs) };
   });
 
   const statusPriority: Record<string, number> = { out: 0, low: 1 };
