@@ -629,6 +629,27 @@ const Ordering = () => {
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border bg-muted/30 font-semibold">
+                        <td colSpan={4} className="px-3 py-2 text-right text-sm">Column Total</td>
+                        {suppliers.map(s => {
+                          const total = orderItems.reduce((sum, item) => {
+                            const herbName = item.herbs?.name ?? '';
+                            const qtyLb = reorderMap.get(herbName) ?? 1;
+                            const herbPricing = pricingByHerb.get(herbName.toLowerCase().trim());
+                            const p = herbPricing?.get(s.id);
+                            return sum + (p ? p.price_per_lb * qtyLb : 0);
+                          }, 0);
+                          return (
+                            <td key={s.id} className="px-3 py-2 text-right text-sm text-primary">
+                              {total > 0 ? `$${total.toFixed(2)}` : '—'}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2"></td>
+                        <td className="px-3 py-2"></td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 
