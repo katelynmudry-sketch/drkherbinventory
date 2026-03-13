@@ -294,7 +294,7 @@ const Ordering = () => {
 
   // Data
   const { data: inventory = [] } = useInventory('bulk');
-  const { data: backstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: suppliers = [] } = useSuppliers();
   const { data: pricing = [] } = useHerbPricing();
   const { data: reorderQtys = [] } = useReorderQtys();
@@ -314,10 +314,14 @@ const Ordering = () => {
   const addSupplier = useAddSupplier();
   const deleteSupplier = useDeleteSupplier();
 
-  // herb_ids that have backstock quantity > 0 (no need to order these)
-  const herbIdsWithBackstock = useMemo(() =>
-    new Set(backstockInventory.filter(i => Number(i.quantity) > 0).map(i => i.herb_id))
-  , [backstockInventory]);
+  // Backstock qty by herb_id
+  const backstockQtyByHerbId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const i of backstockInventory) {
+      map.set(i.herb_id, Number(i.quantity));
+    }
+    return map;
+  }, [backstockInventory]);
 
   // ── Compute the order list ────────────────────────────────────────────────
   const orderItems = useMemo(() => {
@@ -325,20 +329,24 @@ const Ordering = () => {
 
     for (const item of inventory) {
       if (manualRemoveIds.has(item.id)) continue;
-      // Skip herbs that have backstock available
-      if (herbIdsWithBackstock.has(item.herb_id)) continue;
 
-      const qty = Number(item.quantity);
-      const matchesOut = activeFilters.has('out') && item.status === 'out';
-      const matches025 = activeFilters.has('0.25') && qty > 0 && qty <= 0.25;
-      const matches05 = activeFilters.has('0.5') && qty > 0 && qty <= 0.5;
+      const bulkQty = Number(item.quantity);
+      const backstockQty = backstockQtyByHerbId.get(item.herb_id) ?? 0;
+      const totalQty = bulkQty + backstockQty;
+      const threshold = Number(item.herbs?.low_threshold_lb ?? 0.25);
+
+      // Treat as 'out' only if truly zero across both locations
+      const effectivelyOut = item.status === 'out' && totalQty === 0;
+      const matchesOut = activeFilters.has('out') && effectivelyOut;
+      const matches025 = activeFilters.has('0.25') && totalQty > 0 && totalQty <= 0.25;
+      const matches05 = activeFilters.has('0.5') && totalQty > 0 && totalQty <= 0.5;
 
       if (matchesOut || matches025 || matches05) {
         included.set(item.id, item);
       }
     }
 
-    // Manually added herbs bypass the backstock filter
+    // Manually added herbs bypass the combined-qty filter
     for (const herbName of manualAdds) {
       const item = inventory.find(i => (i.herbs?.name ?? '') === herbName);
       if (item && !manualRemoveIds.has(item.id) && !included.has(item.id)) {
@@ -347,7 +355,7 @@ const Ordering = () => {
     }
 
     return Array.from(included.values());
-  }, [inventory, activeFilters, manualAdds, manualRemoveIds, herbIdsWithBackstock]);
+  }, [inventory, activeFilters, manualAdds, manualRemoveIds, backstockQtyByHerbId]);
 
   // Herbs available to add manually (bulk inventory herbs not already in the order list)
   const orderItemIds = useMemo(() => new Set(orderItems.map(i => i.id)), [orderItems]);
@@ -573,11 +581,19 @@ const Ordering = () => {
                               </span>
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
-                              {item.status === 'out' ? (
-                                <Badge variant="destructive" className="text-xs">OUT</Badge>
-                              ) : (
-                                `${qty} lb`
-                              )}
+                              {(() => {
+                                const backstockQty = backstockQtyByHerbId.get(item.herb_id) ?? 0;
+                                const totalQty = qty + backstockQty;
+                                if (totalQty === 0) return <Badge variant="destructive" className="text-xs">OUT</Badge>;
+                                return (
+                                  <span>
+                                    {totalQty} lb
+                                    {backstockQty > 0 && (
+                                      <span className="text-xs text-muted-foreground ml-1">({qty}+{backstockQty})</span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-2">
                               {item.herbs ? (
