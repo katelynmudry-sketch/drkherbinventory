@@ -615,15 +615,34 @@ const Ordering = () => {
                               )}
                             </td>
                             <td className="px-3 py-2">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                title="Remove from order list (session only)"
-                                onClick={() => handleRemove(item.id)}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
+                                  title="Mark as ordered"
+                                  disabled={markAsOrdered.isPending}
+                                  onClick={async () => {
+                                    try {
+                                      await markAsOrdered.mutateAsync([item.id]);
+                                      toast.success(`${herbName} marked as ordered`);
+                                    } catch (e) {
+                                      toast.error(e instanceof Error ? e.message : 'Failed');
+                                    }
+                                  }}
+                                >
+                                  Ordered
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                  title="Remove from order list (session only)"
+                                  onClick={() => handleRemove(item.id)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         );
