@@ -59,6 +59,7 @@ export type Database = {
       inventory: {
         Row: {
           created_at: string
+          current_batch_id: string | null
           herb_id: string
           id: string
           location: string
@@ -72,6 +73,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_batch_id?: string | null
           herb_id: string
           id?: string
           location: string
@@ -85,6 +87,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_batch_id?: string | null
           herb_id?: string
           id?: string
           location?: string
@@ -102,6 +105,70 @@ export type Database = {
             columns: ["herb_id"]
             isOneToOne: false
             referencedRelation: "herbs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_current_batch_id_fkey"
+            columns: ["current_batch_id"]
+            isOneToOne: false
+            referencedRelation: "tincture_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tincture_batches: {
+        Row: {
+          id: string
+          user_id: string
+          herb_id: string
+          batch_number: string
+          batch_date: string
+          status: 'macerating' | 'active' | 'archived'
+          pressed_date: string | null
+          notes: string | null
+          bulk_inventory_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          herb_id: string
+          batch_number: string
+          batch_date?: string
+          status?: 'macerating' | 'active' | 'archived'
+          pressed_date?: string | null
+          notes?: string | null
+          bulk_inventory_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          herb_id?: string
+          batch_number?: string
+          batch_date?: string
+          status?: 'macerating' | 'active' | 'archived'
+          pressed_date?: string | null
+          notes?: string | null
+          bulk_inventory_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tincture_batches_herb_id_fkey"
+            columns: ["herb_id"]
+            isOneToOne: false
+            referencedRelation: "herbs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tincture_batches_bulk_inventory_id_fkey"
+            columns: ["bulk_inventory_id"]
+            isOneToOne: false
+            referencedRelation: "inventory"
             referencedColumns: ["id"]
           },
         ]
@@ -224,7 +291,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_batch_number: {
+        Args: {
+          p_herb_id: string
+          p_user_id: string
+          p_year?: number
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

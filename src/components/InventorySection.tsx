@@ -26,10 +26,12 @@ import {
   InventoryItem,
   getDisplayName,
 } from '@/hooks/useInventory';
+import { usePressBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, isPast, addWeeks } from 'date-fns';
+import { toast } from 'sonner';
 
 interface InventorySectionProps {
   location: InventoryLocation;
@@ -46,6 +48,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
+  const pressBatch = usePressBatch();
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
@@ -61,13 +64,17 @@ export function InventorySection({ location, title, icon, description, searchQue
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
 
-  // Check availability when herb selection or status changes (for clinic low/out)
+  // Check availability when herb selection or status changes
+  // Fires for: clinic (any low/out), tincture (any selection — show if backstock exists)
   useEffect(() => {
     const checkAvail = async () => {
-      if (location === 'clinic' && selectedHerbId && (selectedStatus === 'low' || selectedStatus === 'out')) {
+      const shouldCheck =
+        (location === 'clinic' && selectedHerbId && (selectedStatus === 'low' || selectedStatus === 'out')) ||
+        (location === 'tincture' && selectedHerbId);
+      if (shouldCheck) {
         setIsCheckingAvailability(true);
         try {
-          const result = await checkHerbAvailability(selectedHerbId, 'clinic');
+          const result = await checkHerbAvailability(selectedHerbId, location);
           setAvailability(result);
         } catch (error) {
           console.error('Error checking availability:', error);
@@ -118,11 +125,25 @@ export function InventorySection({ location, title, icon, description, searchQue
   };
 
   const handleMarkTinctureDone = async (id: string) => {
-    await updateInventory.mutateAsync({ 
-      id, 
-      tincture_ready_at: new Date().toISOString() 
+    await updateInventory.mutateAsync({
+      id,
+      tincture_ready_at: new Date().toISOString()
     });
     setEditingId(null);
+  };
+
+  // PRESSED: batch moves to active, inventory row is deleted (tincture is done macerating)
+  const handlePress = async (item: InventoryItem) => {
+    try {
+      if (item.current_batch_id) {
+        await pressBatch.mutateAsync(item.current_batch_id);
+      }
+      // Remove the tincture inventory row — the batch record is the permanent record now
+      await deleteInventory.mutateAsync(item.id);
+      toast.success(`${item.herbs ? getDisplayName(item.herbs) : 'Herb'} pressed — batch recorded`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to press batch');
+    }
   };
 
   const handleUpdateTinctureDate = async (id: string, date: Date) => {
@@ -294,6 +315,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               onDelete={() => handleDelete(item.id)}
               onMarkDone={() => handleMarkTinctureDone(item.id)}
               onUpdateReadyDate={(date) => handleUpdateTinctureDate(item.id, date)}
+              onPress={() => handlePress(item)}
               location={location}
             />
           ))
@@ -316,6 +338,7 @@ interface InventoryItemRowProps {
   onDelete: () => void;
   onMarkDone: () => void;
   onUpdateReadyDate: (date: Date) => void;
+  onPress: () => void;
   location: InventoryLocation;
 }
 
@@ -332,6 +355,7 @@ function InventoryItemRow({
   onDelete,
   onMarkDone,
   onUpdateReadyDate,
+  onPress,
   location,
 }: InventoryItemRowProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -413,6 +437,17 @@ function InventoryItemRow({
           ) : (
             <>
               <StatusBadge status={item.status} location={location} />
+              {location === 'tincture' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2 text-xs font-semibold border-purple-400 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20"
+                  onClick={onPress}
+                  title="Mark as pressed — archives tincture row, records batch"
+                >
+                  PRESSED
+                </Button>
+              )}
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onStartEdit}>
                 <Edit2 className="h-4 w-4 text-muted-foreground" />
               </Button>

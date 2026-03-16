@@ -35,6 +35,7 @@ export interface InventoryItem {
   status: InventoryStatus;
   tincture_started_at: string | null;
   tincture_ready_at: string | null;
+  current_batch_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -169,7 +170,7 @@ export function useUpdateHerb() {
 
 export function useAddInventory() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (item: {
       herb_id: string;
@@ -180,12 +181,27 @@ export function useAddInventory() {
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      
+
       const tincture_started_at = item.location === 'tincture' ? new Date().toISOString() : null;
-      const tincture_ready_at = item.location === 'tincture' 
-        ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() 
+      const tincture_ready_at = item.location === 'tincture'
+        ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
         : null;
-      
+
+      // For backstock: auto-tag with the herb's most recent active batch (if any)
+      let current_batch_id: string | null = null;
+      if (item.location === 'backstock') {
+        const { data: activeBatch } = await supabase
+          .from('tincture_batches')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('herb_id', item.herb_id)
+          .eq('status', 'active')
+          .order('pressed_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        current_batch_id = activeBatch?.id ?? null;
+      }
+
       const { data, error } = await supabase
         .from('inventory')
         .insert({
@@ -193,6 +209,7 @@ export function useAddInventory() {
           user_id: user.id,
           tincture_started_at,
           tincture_ready_at,
+          current_batch_id,
         })
         .select('*, herbs(*)')
         .single();
