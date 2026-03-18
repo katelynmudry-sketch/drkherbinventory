@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2, CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, Edit2, Check, X, Clock, Filter, CheckCircle2, CalendarIcon, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,9 +53,12 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('full');
+  const [addSearch, setAddSearch] = useState('');
+  const [addSize, setAddSize] = useState(''); // for backstock: 'small' | 'large' | ''
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
   const [editHerbName, setEditHerbName] = useState('');
+  const [editSize, setEditSize] = useState('');
   const [showOutOnly, setShowOutOnly] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
@@ -89,15 +92,25 @@ export function InventorySection({ location, title, icon, description, searchQue
   }, [selectedHerbId, selectedStatus, location]);
   const handleAdd = async () => {
     if (!selectedHerbId) return;
-    
+
+    const status: InventoryStatus =
+      location === 'clinic' ? selectedStatus :
+      location === 'tincture' ? 'full' :
+      'full';
+
+    const notes = location === 'backstock' && addSize ? addSize : undefined;
+
     await addInventory.mutateAsync({
       herb_id: selectedHerbId,
       location,
-      status: location === 'clinic' ? selectedStatus : 'full',
+      status,
+      ...(notes ? { notes } : {}),
     });
-    
+
     setSelectedHerbId('');
-    setSelectedStatus('full');
+    setSelectedStatus('low');
+    setAddSearch('');
+    setAddSize('');
     setAvailability([]);
     setIsAddDialogOpen(false);
   };
@@ -106,19 +119,22 @@ export function InventorySection({ location, title, icon, description, searchQue
     setIsAddDialogOpen(open);
     if (!open) {
       setSelectedHerbId('');
-      setSelectedStatus('full');
+      setSelectedStatus('low');
+      setAddSearch('');
+      setAddSize('');
       setAvailability([]);
     }
   };
 
-  const handleUpdateStatus = async (id: string, status: InventoryStatus, herbId: string, newHerbName: string) => {
+  const handleUpdateStatus = async (id: string, status: InventoryStatus, herbId: string, newHerbName: string, size: string) => {
     // Update herb name if changed
     const currentHerb = herbs.find(h => h.id === herbId);
     if (currentHerb && currentHerb.name !== newHerbName && newHerbName.trim()) {
       await updateHerb.mutateAsync({ id: herbId, name: newHerbName.trim() });
     }
-    // Only update status for non-tincture locations
-    if (location !== 'tincture') {
+    if (location === 'backstock') {
+      await updateInventory.mutateAsync({ id, notes: size || null } as any);
+    } else if (location !== 'tincture') {
       await updateInventory.mutateAsync({ id, status });
     }
     setEditingId(null);
@@ -161,6 +177,17 @@ export function InventorySection({ location, title, icon, description, searchQue
   // Filter out herbs that are already in this location
   const existingHerbIds = inventory.map(item => item.herb_id);
   const availableHerbs = herbs.filter(herb => !existingHerbIds.includes(herb.id));
+
+  // Autocomplete: filter available herbs by search query
+  const filteredAddHerbs = useMemo(() => {
+    const q = addSearch.trim().toLowerCase();
+    if (!q) return availableHerbs;
+    return availableHerbs.filter(h =>
+      h.name.toLowerCase().includes(q) ||
+      (h.common_name && h.common_name.toLowerCase().includes(q)) ||
+      (h.latin_name && h.latin_name.toLowerCase().includes(q))
+    );
+  }, [addSearch, availableHerbs]);
 
   // Filter by search query and status filter, then sort by priority (for clinic) or alphabetically
   const filteredInventory = inventory
@@ -241,40 +268,82 @@ export function InventorySection({ location, title, icon, description, searchQue
                   <DialogTitle>Add to {title}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
-                  <Select value={selectedHerbId} onValueChange={setSelectedHerbId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an herb" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableHerbs.map((herb) => (
-                        <SelectItem key={herb.id} value={herb.id}>
-                          {herb.name}
-                          {herb.common_name && ` (${herb.common_name})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
+
+                  {/* Clinic: Low / Out */}
                   {location === 'clinic' && (
                     <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as InventoryStatus)}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
+                        <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="full">Full</SelectItem>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="out">Out</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
-                  
+
+                  {/* Backstock: Small / Large / Untagged */}
+                  {location === 'backstock' && (
+                    <Select value={addSize} onValueChange={setAddSize}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Size (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Untagged</SelectItem>
+                        <SelectItem value="small">Small</SelectItem>
+                        <SelectItem value="large">Large</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {/* Herb autocomplete search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="Search herbs..."
+                      value={addSearch}
+                      onChange={(e) => { setAddSearch(e.target.value); setSelectedHerbId(''); }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Matched herb list */}
+                  {addSearch.trim().length > 0 && (
+                    <div className="border rounded-md max-h-48 overflow-y-auto">
+                      {filteredAddHerbs.length > 0 ? (
+                        filteredAddHerbs.slice(0, 20).map(herb => (
+                          <button
+                            key={herb.id}
+                            type="button"
+                            className={cn(
+                              "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0",
+                              selectedHerbId === herb.id && "bg-accent"
+                            )}
+                            onClick={() => { setSelectedHerbId(herb.id); setAddSearch(herb.name); }}
+                          >
+                            <span className="font-medium">{herb.name}</span>
+                            {herb.common_name && (
+                              <span className="text-muted-foreground ml-1">({herb.common_name})</span>
+                            )}
+                            {herb.latin_name && (
+                              <span className="text-muted-foreground text-xs block">{herb.latin_name}</span>
+                            )}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="px-3 py-2 text-sm text-muted-foreground italic">No matching herbs</p>
+                      )}
+                    </div>
+                  )}
+
                   {availability.length > 0 && selectedHerbId && (
-                    <AvailabilityAlert 
-                      herbName={herbs.find(h => h.id === selectedHerbId)?.name || 'This herb'} 
-                      availability={availability} 
+                    <AvailabilityAlert
+                      herbName={herbs.find(h => h.id === selectedHerbId)?.name || 'This herb'}
+                      availability={availability}
                     />
                   )}
-                  
+
                   <Button
                     className="w-full"
                     onClick={handleAdd}
@@ -307,10 +376,12 @@ export function InventorySection({ location, title, icon, description, searchQue
                 setEditingId(item.id);
                 setEditStatus(item.status);
                 setEditHerbName(item.herbs?.name || '');
+                setEditSize(item.notes || '');
               }}
               onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={() => handleUpdateStatus(item.id, editStatus, item.herb_id, editHerbName)}
+              onSaveEdit={() => handleUpdateStatus(item.id, editStatus, item.herb_id, editHerbName, editSize)}
               onStatusChange={setEditStatus}
+              onSizeChange={setEditSize}
               onHerbNameChange={setEditHerbName}
               onDelete={() => handleDelete(item.id)}
               onMarkDone={() => handleMarkTinctureDone(item.id)}
@@ -334,6 +405,7 @@ interface InventoryItemRowProps {
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onStatusChange: (status: InventoryStatus) => void;
+  onSizeChange: (size: string) => void;
   onHerbNameChange: (name: string) => void;
   onDelete: () => void;
   onMarkDone: () => void;
@@ -351,6 +423,7 @@ function InventoryItemRow({
   onCancelEdit,
   onSaveEdit,
   onStatusChange,
+  onSizeChange,
   onHerbNameChange,
   onDelete,
   onMarkDone,
@@ -414,19 +487,35 @@ function InventoryItemRow({
         <div className="flex items-center gap-2 shrink-0">
           {isEditing ? (
             <>
-              {/* Show status dropdown only for clinic */}
+              {/* Clinic: Low / Out only */}
               {location === 'clinic' && (
                 <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
                   <SelectTrigger className="w-24 h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="full">Full</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="out">Out</SelectItem>
                   </SelectContent>
                 </Select>
               )}
+              {/* Backstock: size tag stored in notes */}
+              {location === 'backstock' && (
+                <Select
+                  value={item.notes || ''}
+                  onValueChange={(v) => onSizeChange(v)}
+                >
+                  <SelectTrigger className="w-24 h-8">
+                    <SelectValue placeholder="Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Untagged</SelectItem>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {/* Tincture: no status picker */}
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onSaveEdit}>
                 <Check className="h-4 w-4 text-green-600" />
               </Button>
@@ -436,7 +525,7 @@ function InventoryItemRow({
             </>
           ) : (
             <>
-              <StatusBadge status={item.status} location={location} />
+              <StatusBadge status={item.status} location={location} notes={item.notes} />
               {location === 'tincture' && (
                 <Button
                   size="sm"
@@ -507,12 +596,12 @@ function InventoryItemRow({
   );
 }
 
-function StatusBadge({ status, location }: { status: InventoryStatus; location?: InventoryLocation }) {
-  // Backstock is binary: either it's there (yes) or it's not tracked here
+function StatusBadge({ status, location, notes }: { status: InventoryStatus; location?: InventoryLocation; notes?: string | null }) {
   if (location === 'backstock') {
+    const label = notes === 'small' ? 'Small' : notes === 'large' ? 'Large' : 'In Stock';
     return (
       <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-green-500/20 text-green-700 dark:text-green-400">
-        Yes
+        {label}
       </span>
     );
   }
@@ -522,10 +611,10 @@ function StatusBadge({ status, location }: { status: InventoryStatus; location?:
         "rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap",
         status === 'full' && "bg-green-500/20 text-green-700 dark:text-green-400",
         status === 'low' && "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-        status === 'out' && "bg-red-500/20 text-red-700 dark:text-red-400"
+        (status === 'out' || status === 'ordered') && "bg-red-500/20 text-red-700 dark:text-red-400"
       )}
     >
-      {status === 'full' ? 'Full' : status === 'low' ? 'Low' : 'Out'}
+      {status === 'full' ? 'Full' : status === 'low' ? 'Low' : status === 'ordered' ? 'Ordered' : 'Out'}
     </span>
   );
 }
