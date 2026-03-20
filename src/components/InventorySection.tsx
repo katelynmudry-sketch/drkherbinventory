@@ -108,11 +108,10 @@ export function InventorySection({ location, title, icon, description, searchQue
     });
 
     setSelectedHerbId('');
-    setSelectedStatus('low');
     setAddSearch('');
     setAddSize('');
     setAvailability([]);
-    setIsAddDialogOpen(false);
+    // Keep dialog open for adding more herbs
   };
 
   const handleDialogClose = (open: boolean) => {
@@ -320,7 +319,21 @@ export function InventorySection({ location, title, icon, description, searchQue
                               "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0",
                               selectedHerbId === herb.id && "bg-accent"
                             )}
-                            onClick={() => { setSelectedHerbId(herb.id); setAddSearch(herb.name); }}
+                            onClick={async () => {
+                              setSelectedHerbId(herb.id);
+                              const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
+                              const notes = location === 'backstock' && addSize ? addSize : undefined;
+                              await addInventory.mutateAsync({
+                                herb_id: herb.id,
+                                location,
+                                status,
+                                ...(notes ? { notes } : {}),
+                              });
+                              toast.success(`${herb.name} added`);
+                              setSelectedHerbId('');
+                              setAddSearch('');
+                              setAvailability([]);
+                            }}
                           >
                             <span className="font-medium">{herb.name}</span>
                             {herb.common_name && (
@@ -337,19 +350,12 @@ export function InventorySection({ location, title, icon, description, searchQue
                     </div>
                   )}
 
-                  {availability.length > 0 && selectedHerbId && (
-                    <AvailabilityAlert
-                      herbName={herbs.find(h => h.id === selectedHerbId)?.name || 'This herb'}
-                      availability={availability}
-                    />
-                  )}
-
                   <Button
+                    variant="outline"
                     className="w-full"
-                    onClick={handleAdd}
-                    disabled={!selectedHerbId || addInventory.isPending || isCheckingAvailability}
+                    onClick={() => setIsAddDialogOpen(false)}
                   >
-                    {addInventory.isPending ? 'Adding...' : 'Add to Inventory'}
+                    Done
                   </Button>
                 </div>
               </DialogContent>
