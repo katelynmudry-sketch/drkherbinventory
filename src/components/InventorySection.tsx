@@ -52,9 +52,10 @@ export function InventorySection({ location, title, icon, description, searchQue
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('full');
+  const [selectedStatus, setSelectedStatus] = useState<InventoryStatus>('low');
   const [addSearch, setAddSearch] = useState('');
   const [addSize, setAddSize] = useState(''); // for backstock: 'small' | 'large' | ''
+  const [stagedHerbs, setStagedHerbs] = useState<Array<{ id: string; name: string }>>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<InventoryStatus>('full');
   const [editHerbName, setEditHerbName] = useState('');
@@ -90,28 +91,24 @@ export function InventorySection({ location, title, icon, description, searchQue
     };
     checkAvail();
   }, [selectedHerbId, selectedStatus, location]);
-  const handleAdd = async () => {
-    if (!selectedHerbId) return;
-
-    const status: InventoryStatus =
-      location === 'clinic' ? selectedStatus :
-      location === 'tincture' ? 'full' :
-      'full';
-
+  const handleAddAllStaged = async () => {
+    if (stagedHerbs.length === 0) return;
+    const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
     const notes = location === 'backstock' && addSize ? addSize : undefined;
-
-    await addInventory.mutateAsync({
-      herb_id: selectedHerbId,
-      location,
-      status,
-      ...(notes ? { notes } : {}),
-    });
-
-    setSelectedHerbId('');
+    await Promise.all(stagedHerbs.map(h =>
+      addInventory.mutateAsync({
+        herb_id: h.id,
+        location,
+        status,
+        ...(notes ? { notes } : {}),
+      })
+    ));
+    toast.success(`Added ${stagedHerbs.length} herb${stagedHerbs.length > 1 ? 's' : ''} to ${title}`);
+    setStagedHerbs([]);
     setAddSearch('');
     setAddSize('');
     setAvailability([]);
-    // Keep dialog open for adding more herbs
+    setIsAddDialogOpen(false);
   };
 
   const handleDialogClose = (open: boolean) => {
@@ -121,6 +118,7 @@ export function InventorySection({ location, title, icon, description, searchQue
       setSelectedStatus('low');
       setAddSearch('');
       setAddSize('');
+      setStagedHerbs([]);
       setAvailability([]);
     }
   };
@@ -309,30 +307,16 @@ export function InventorySection({ location, title, icon, description, searchQue
 
                   {/* Matched herb list */}
                   {addSearch.trim().length > 0 && (
-                    <div className="border rounded-md max-h-48 overflow-y-auto">
-                      {filteredAddHerbs.length > 0 ? (
-                        filteredAddHerbs.slice(0, 20).map(herb => (
+                    <div className="border rounded-md max-h-40 overflow-y-auto">
+                      {filteredAddHerbs.filter(h => !stagedHerbs.find(s => s.id === h.id)).length > 0 ? (
+                        filteredAddHerbs.filter(h => !stagedHerbs.find(s => s.id === h.id)).slice(0, 20).map(herb => (
                           <button
                             key={herb.id}
                             type="button"
-                            className={cn(
-                              "w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0",
-                              selectedHerbId === herb.id && "bg-accent"
-                            )}
-                            onClick={async () => {
-                              setSelectedHerbId(herb.id);
-                              const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
-                              const notes = location === 'backstock' && addSize ? addSize : undefined;
-                              await addInventory.mutateAsync({
-                                herb_id: herb.id,
-                                location,
-                                status,
-                                ...(notes ? { notes } : {}),
-                              });
-                              toast.success(`${herb.name} added`);
-                              setSelectedHerbId('');
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                            onClick={() => {
+                              setStagedHerbs(prev => [...prev, { id: herb.id, name: herb.name }]);
                               setAddSearch('');
-                              setAvailability([]);
                             }}
                           >
                             <span className="font-medium">{herb.name}</span>
@@ -350,12 +334,34 @@ export function InventorySection({ location, title, icon, description, searchQue
                     </div>
                   )}
 
+                  {/* Staged herbs list */}
+                  {stagedHerbs.length > 0 && (
+                    <div className="border rounded-md divide-y">
+                      {stagedHerbs.map(h => (
+                        <div key={h.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                          <span className="font-medium">{h.name}</span>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            onClick={() => setStagedHerbs(prev => prev.filter(s => s.id !== h.id))}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <Button
-                    variant="outline"
                     className="w-full"
-                    onClick={() => setIsAddDialogOpen(false)}
+                    onClick={handleAddAllStaged}
+                    disabled={stagedHerbs.length === 0 || addInventory.isPending}
                   >
-                    Done
+                    {addInventory.isPending
+                      ? 'Adding...'
+                      : stagedHerbs.length === 0
+                      ? 'Select herbs above'
+                      : `Add ${stagedHerbs.length} herb${stagedHerbs.length > 1 ? 's' : ''}`}
                   </Button>
                 </div>
               </DialogContent>
