@@ -293,7 +293,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                     </Select>
                   )}
 
-                  {/* Herb autocomplete search */}
+                  {/* Herb autocomplete search + results — no autoFocus to avoid Radix dialog close */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
@@ -301,7 +301,6 @@ export function InventorySection({ location, title, icon, description, searchQue
                       placeholder="Search herbs..."
                       value={addSearch}
                       onChange={(e) => { setAddSearch(e.target.value); setSelectedHerbId(''); }}
-                      autoFocus
                     />
                   </div>
 
@@ -314,7 +313,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                             key={herb.id}
                             type="button"
                             className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
-                            onMouseDown={(e) => e.preventDefault()}
+                            onPointerDown={(e) => e.preventDefault()}
                             onClick={() => {
                               setStagedHerbs(prev => [...prev, { id: herb.id, name: herb.name }]);
                               setAddSearch('');
@@ -344,7 +343,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                           <button
                             type="button"
                             className="text-muted-foreground hover:text-destructive transition-colors"
-                            onMouseDown={(e) => e.preventDefault()}
+                            onPointerDown={(e) => e.preventDefault()}
                             onClick={() => setStagedHerbs(prev => prev.filter(s => s.id !== h.id))}
                           >
                             <X className="h-3 w-3" />
