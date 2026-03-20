@@ -314,6 +314,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                             key={herb.id}
                             type="button"
                             className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               setStagedHerbs(prev => [...prev, { id: herb.id, name: herb.name }]);
                               setAddSearch('');
@@ -343,6 +344,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                           <button
                             type="button"
                             className="text-muted-foreground hover:text-destructive transition-colors"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => setStagedHerbs(prev => prev.filter(s => s.id !== h.id))}
                           >
                             <X className="h-3 w-3" />
