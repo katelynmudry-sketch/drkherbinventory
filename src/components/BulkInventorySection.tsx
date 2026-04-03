@@ -718,6 +718,7 @@ function BulkItemCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="0">Out (0 lb)</SelectItem>
                   {LB_OPTIONS.map(lb => (
                     <SelectItem key={lb} value={String(lb)}>
                       {formatLbs(lb)} lb
@@ -741,6 +742,7 @@ function BulkItemCard({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE_VALUE}>None</SelectItem>
+                  <SelectItem value="0">Out (0 lb)</SelectItem>
                   {LB_OPTIONS.map(lb => (
                     <SelectItem key={lb} value={String(lb)}>
                       {formatLbs(lb)} lb
