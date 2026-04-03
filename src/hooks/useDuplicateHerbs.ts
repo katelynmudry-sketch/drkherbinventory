@@ -32,7 +32,7 @@ export function detectDuplicates(herbs: Herb[]): DuplicateGroup[] {
       if (i === j || merged.has(keys[j])) continue;
       const a = keys[i];
       const b = keys[j];
-      // One is a prefix of the other and the longer one has exactly one more word
+      // One is a prefix of the other (e.g. "lomatium" ↔ "lomatium dissectum")
       if (b.startsWith(a + ' ') || a.startsWith(b + ' ')) {
         const survivor = a.length <= b.length ? a : b;
         const absorbed = a.length <= b.length ? b : a;

@@ -86,60 +86,38 @@ function DuplicateReviewContent({ duplicates }: { duplicates: DuplicateGroup[] }
   );
 }
 
-interface FieldCopyState {
-  common_name: boolean;
-  latin_name: boolean;
-  pinyin_name: boolean;
-  notes: boolean;
-}
 
 function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
   const mergeHerbs = useMergeHerbs();
   const [survivorId, setSurvivorId] = useState<string>(group.herbs[0].id);
   const [expanded, setExpanded] = useState(true);
-  const [copyFields, setCopyFields] = useState<FieldCopyState>({
-    common_name: false,
-    latin_name: false,
-    pinyin_name: false,
-    notes: false,
-  });
 
   const survivor = group.herbs.find(h => h.id === survivorId) ?? group.herbs[0];
-  const loser = group.herbs.find(h => h.id !== survivorId) ?? group.herbs[1];
+  const losers = group.herbs.filter(h => h.id !== survivorId);
 
   const handleMerge = async () => {
-    const survivorUpdates: Record<string, string | null> = {};
-    if (copyFields.common_name && loser.common_name && !survivor.common_name) {
-      survivorUpdates.common_name = loser.common_name;
+    // Merge all losers into the survivor one at a time
+    for (const loser of losers) {
+      // Copy any non-empty fields from loser that survivor is missing
+      const survivorUpdates: Record<string, string | null> = {};
+      for (const field of ['common_name', 'latin_name', 'pinyin_name', 'notes'] as const) {
+        if (loser[field] && !survivor[field]) survivorUpdates[field] = loser[field];
+      }
+      try {
+        await mergeHerbs.mutateAsync({
+          survivorId: survivor.id,
+          loserId: loser.id,
+          survivorUpdates: Object.keys(survivorUpdates).length > 0 ? survivorUpdates : undefined,
+        });
+      } catch (err: any) {
+        toast.error(`Failed to merge "${loser.name}": ${err.message || 'Unknown error'}`);
+        return;
+      }
     }
-    if (copyFields.latin_name && loser.latin_name && !survivor.latin_name) {
-      survivorUpdates.latin_name = loser.latin_name;
-    }
-    if (copyFields.pinyin_name && loser.pinyin_name && !survivor.pinyin_name) {
-      survivorUpdates.pinyin_name = loser.pinyin_name;
-    }
-    if (copyFields.notes && loser.notes && !survivor.notes) {
-      survivorUpdates.notes = loser.notes;
-    }
-
-    try {
-      await mergeHerbs.mutateAsync({
-        survivorId: survivor.id,
-        loserId: loser.id,
-        survivorUpdates: Object.keys(survivorUpdates).length > 0 ? survivorUpdates : undefined,
-      });
-      toast.success(`Merged "${loser.name}" into "${survivor.name}"`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to merge herbs');
-    }
+    toast.success(`Merged ${losers.length} duplicate${losers.length > 1 ? 's' : ''} into "${survivor.name}"`);
   };
 
-  const fields: Array<{ key: keyof FieldCopyState; label: string }> = [
-    { key: 'common_name', label: 'Common name' },
-    { key: 'latin_name', label: 'Latin name' },
-    { key: 'pinyin_name', label: 'Pinyin name' },
-    { key: 'notes', label: 'Notes' },
-  ];
+  const colClass = group.herbs.length === 2 ? 'grid-cols-2' : group.herbs.length === 3 ? 'grid-cols-3' : 'grid-cols-2';
 
   return (
     <div className="rounded-lg border bg-background">
@@ -155,9 +133,9 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
 
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
-          {/* Side-by-side comparison */}
-          <div className="grid grid-cols-2 gap-3">
-            {group.herbs.slice(0, 2).map(herb => (
+          <p className="text-xs text-muted-foreground">Click a record to select it as the one to keep. All others will be merged into it.</p>
+          <div className={`grid ${colClass} gap-3`}>
+            {group.herbs.map(herb => (
               <HerbCard
                 key={herb.id}
                 herb={herb}
@@ -167,32 +145,6 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
             ))}
           </div>
 
-          {/* Optional field copy */}
-          {fields.some(f => loser[f.key] && !survivor[f.key]) && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">
-                Copy fields from "{loser.name}" into "{survivor.name}" before merging:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {fields.map(({ key, label }) => {
-                  const hasValue = !!loser[key] && !survivor[key];
-                  if (!hasValue) return null;
-                  return (
-                    <label key={key} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={copyFields[key]}
-                        onChange={e => setCopyFields(prev => ({ ...prev, [key]: e.target.checked }))}
-                        className="h-3 w-3"
-                      />
-                      <span>{label}: <em>{loser[key]}</em></span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <Button
             size="sm"
             onClick={handleMerge}
@@ -200,7 +152,9 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
             className="w-full gap-2"
           >
             <GitMerge className="h-3 w-3" />
-            {mergeHerbs.isPending ? 'Merging...' : `Keep "${survivor.name}", delete "${loser.name}"`}
+            {mergeHerbs.isPending
+              ? 'Merging...'
+              : `Keep "${survivor.name}", delete ${losers.length} duplicate${losers.length > 1 ? 's' : ''}`}
           </Button>
         </div>
       )}
