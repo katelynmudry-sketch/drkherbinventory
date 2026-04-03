@@ -260,7 +260,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                   <Plus className="h-4 w-4" />
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()}>
                 <DialogHeader>
                   <DialogTitle>Add to {title}</DialogTitle>
                 </DialogHeader>
