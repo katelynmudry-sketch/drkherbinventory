@@ -569,6 +569,7 @@ const Ordering = () => {
                         const herbPricing = pricingByHerb.get(herbName.toLowerCase().trim());
                         const prices = herbPricing ? Array.from(herbPricing.values()) : [];
                         const minPrice = prices.length > 0 ? Math.min(...prices.map(p => p.price_per_lb)) : null;
+                        const isOrdered = item.status === 'ordered';
 
                         return (
                           <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
@@ -634,11 +635,16 @@ const Ordering = () => {
                               <div className="flex items-center gap-1">
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  className="h-6 px-2 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
-                                  title="Mark as ordered"
-                                  disabled={markAsOrdered.isPending}
+                                  variant={isOrdered ? 'default' : 'outline'}
+                                  className={`h-6 px-2 text-xs ${
+                                    isOrdered
+                                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                      : 'border-blue-300 text-blue-700 hover:bg-blue-50'
+                                  }`}
+                                  title={isOrdered ? 'Already marked as ordered' : 'Mark as ordered'}
+                                  disabled={markAsOrdered.isPending || isOrdered}
                                   onClick={async () => {
+                                    if (isOrdered) return;
                                     try {
                                       await markAsOrdered.mutateAsync([item.id]);
                                       toast.success(`${herbName} marked as ordered`);
@@ -647,7 +653,7 @@ const Ordering = () => {
                                     }
                                   }}
                                 >
-                                  Ordered
+                                  {isOrdered ? 'Ordered' : 'Ordered'}
                                 </Button>
                                 <Button
                                   size="icon"

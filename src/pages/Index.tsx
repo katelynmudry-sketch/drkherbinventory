@@ -10,6 +10,7 @@ import { InventorySection } from '@/components/InventorySection';
 import { BulkInventorySection } from '@/components/BulkInventorySection';
 import { TinctureRestockPanel } from '@/components/TinctureRestockPanel';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
+import { DuplicateHerbsReview } from '@/components/DuplicateHerbsReview';
 import { AuthForm } from '@/components/AuthForm';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventory } from '@/hooks/useInventory';
@@ -80,8 +81,9 @@ const Index = () => {
                 <p className="text-xs text-muted-foreground">Your medicinary tracker</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
               <AddHerbDialog />
+              <DuplicateHerbsReview />
               <Button variant="ghost" size="icon" asChild title="Ordering">
                 <Link to="/ordering"><ShoppingCart className="h-4 w-4" /></Link>
               </Button>

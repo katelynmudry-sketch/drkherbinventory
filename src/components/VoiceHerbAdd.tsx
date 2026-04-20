@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { useAddHerb, useAddInventory, useHerbs, useRemoveInventoryByHerbName, useUpdateInventoryByHerbName, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useCreateTinctureBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailabilityByName, AvailabilityInfo, formatAvailabilityMessage } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
   const { data: existingHerbs } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
+  const createTinctureBatch = useCreateTinctureBatch();
   const removeInventory = useRemoveInventoryByHerbName();
   const updateInventory = useUpdateInventoryByHerbName();
   
@@ -316,8 +318,24 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
             location,
             status,
           });
-          
+
+          // Auto-create a tincture batch when adding to the tincture location
+          let batchNumber: string | null = null;
+          if (location === 'tincture') {
+            try {
+              const batch = await createTinctureBatch.mutateAsync({ herb_id: herb.id });
+              batchNumber = batch.batch_number;
+            } catch (batchErr) {
+              console.error(`Failed to create batch for ${herbName}:`, batchErr);
+            }
+          }
+
           successCount++;
+
+          // Speak batch number if created
+          if (batchNumber) {
+            speakResponse(`Added ${herbName} tincture, batch ${batchNumber}`);
+          }
         } catch (error: any) {
           // Check if it's a duplicate entry error
           if (error?.code === '23505') {
@@ -330,11 +348,17 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
       }
 
       setIsProcessing(false);
-      
+
       if (successCount > 0) {
-        const message = `Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${location} as ${status}`;
-        toast.success(message);
-        speakResponse(message);
+        const message = location === 'tincture' && successCount === 1
+          ? null  // individual batch messages already spoken above
+          : `Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${location} as ${status}`;
+        if (message) {
+          toast.success(message);
+          speakResponse(message);
+        } else {
+          toast.success(`Added ${successCount} tincture${successCount > 1 ? 's' : ''}`);
+        }
       }
     }
     

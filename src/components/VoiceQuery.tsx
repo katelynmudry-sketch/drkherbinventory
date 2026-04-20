@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Mic, MicOff, Volume2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
-import { useSearchInventory, InventoryItem } from '@/hooks/useInventory';
+import { useSearchInventory, useInventory, useHerbs, InventoryItem, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
-import { scanForHerbs } from '@/lib/herbCorrection';
+import { scanForHerbs, buildExtraNamesFromHerbs } from '@/lib/herbCorrection';
 
 interface VoiceQueryProps {
   onResult?: (items: InventoryItem[]) => void;
@@ -18,9 +18,96 @@ const TAB_LOCATIONS: Record<string, string[]> = {
   bulk: ['bulk'],
 };
 
+// ── Cross-location query parser ────────────────────────────────────────────────
+// Detects queries like:
+//   "what clinic herbs are low and also in backstock?"
+//   "anything out in bulk that's in backstock?"
+//   "show me tincture herbs that are also in clinic"
+//   "what's low in clinic?"
+//   "what's out in backstock?"
+
+interface CrossLocationQuery {
+  primaryLocation: InventoryLocation;
+  primaryStatus: InventoryStatus | null;  // null = any status
+  secondaryLocation: InventoryLocation | null; // null = no cross-check
+}
+
+const LOCATION_WORDS: Record<string, InventoryLocation> = {
+  'clinic': 'clinic',
+  'backstock': 'backstock',
+  'back stock': 'backstock',
+  'tincture': 'tincture',
+  'tinctures': 'tincture',
+  'bulk': 'bulk',
+};
+
+const STATUS_WORDS: Record<string, InventoryStatus> = {
+  'low': 'low',
+  'out': 'out',
+  'empty': 'out',
+  'full': 'full',
+  'out of stock': 'out',
+  'running low': 'low',
+};
+
+function parseCrossLocationQuery(text: string): CrossLocationQuery | null {
+  const t = text.toLowerCase();
+
+  // Detect locations mentioned
+  const mentionedLocations: InventoryLocation[] = [];
+  // Check multi-word before single-word to avoid partial matches
+  const locEntries = Object.entries(LOCATION_WORDS).sort((a, b) => b[0].length - a[0].length);
+  const foundLocSpans: Array<{ loc: InventoryLocation; idx: number }> = [];
+  for (const [word, loc] of locEntries) {
+    const idx = t.indexOf(word);
+    if (idx !== -1 && !foundLocSpans.some(s => s.loc === loc)) {
+      foundLocSpans.push({ loc, idx });
+    }
+  }
+  foundLocSpans.sort((a, b) => a.idx - b.idx);
+  for (const { loc } of foundLocSpans) {
+    if (!mentionedLocations.includes(loc)) mentionedLocations.push(loc);
+  }
+
+  if (mentionedLocations.length === 0) return null;
+
+  // Detect status
+  let detectedStatus: InventoryStatus | null = null;
+  for (const [word, status] of Object.entries(STATUS_WORDS).sort((a, b) => b[0].length - a[0].length)) {
+    if (t.includes(word)) {
+      detectedStatus = status;
+      break;
+    }
+  }
+
+  // Cross-location indicators
+  const crossIndicators = ['also', 'as well', 'too', 'both', 'in addition', 'and also', 'that is also', "that's also", 'that are also'];
+  const hasCrossIntent = crossIndicators.some(w => t.includes(w));
+
+  // "also in backstock" — secondary location comes after a cross indicator
+  // Primary = first location, secondary = second location (when cross intent present)
+  const primaryLocation = mentionedLocations[0];
+  const secondaryLocation = (hasCrossIntent && mentionedLocations.length >= 2)
+    ? mentionedLocations[1]
+    : null;
+
+  // Must have at least a location to be a cross-location query
+  // Also accept simple status queries: "what's low in clinic?"
+  const isQuery = /\b(what|which|show|list|any|anything|is there|are there|do you|find|get|check)\b/.test(t)
+    || detectedStatus !== null
+    || mentionedLocations.length >= 2;
+
+  if (!isQuery) return null;
+
+  return { primaryLocation, primaryStatus: detectedStatus, secondaryLocation };
+}
+
 export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProps) {
   const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const searchInventory = useSearchInventory();
+  const { data: allInventory = [] } = useInventory();
+  const { data: herbsData } = useHerbs();
+  const extraNames = useMemo(() => buildExtraNamesFromHerbs(herbsData ?? []), [herbsData]);
   const [lastQuery, setLastQuery] = useState('');
   const [response, setResponse] = useState<string | null>(null);
   const [foundItems, setFoundItems] = useState<InventoryItem[]>([]);
@@ -34,11 +121,18 @@ export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProp
   }, [transcript, alternatives, isListening]);
 
   const processQuery = async (query: string, alts: string[] = []) => {
-    // Parse query to extract multiple herb names using scan-and-match
-    const herbNames = parseMultipleHerbs(query, alts);
-    
+    // Try cross-location query first (no herb names needed)
+    const crossQuery = parseCrossLocationQuery(query);
+    if (crossQuery) {
+      handleCrossLocationQuery(crossQuery);
+      return;
+    }
+
+    // Fall back to herb-name lookup
+    const herbNames = parseMultipleHerbs(query, alts, extraNames);
+
     if (herbNames.length === 0) {
-      setResponse("I didn't catch any herb names. Try asking something like 'Check backstock for Angelica and Skullcap'");
+      setResponse("I didn't catch that. Try: 'What's low in clinic?' or 'Anything in clinic low that's also in backstock?' or ask about a specific herb.");
       return;
     }
 
@@ -95,8 +189,67 @@ export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProp
     }
   };
 
+  const handleCrossLocationQuery = (query: CrossLocationQuery) => {
+    const { primaryLocation, primaryStatus, secondaryLocation } = query;
+
+    // Step 1: get herbs matching primary location + status filter
+    let primary = allInventory.filter(item => item.location === primaryLocation);
+    if (primaryStatus) {
+      primary = primary.filter(item => item.status === primaryStatus);
+    }
+
+    if (primary.length === 0) {
+      const statusLabel = primaryStatus ? ` ${primaryStatus}` : '';
+      const msg = `No${statusLabel} herbs found in ${primaryLocation}.`;
+      setResponse(msg);
+      setFoundItems([]);
+      speakResponse(msg);
+      return;
+    }
+
+    // Step 2: if cross-location, filter to herbs that also exist in secondary location
+    let results = primary;
+    if (secondaryLocation) {
+      const secondaryHerbIds = new Set(
+        allInventory
+          .filter(item => item.location === secondaryLocation)
+          .map(item => item.herb_id)
+      );
+      results = primary.filter(item => secondaryHerbIds.has(item.herb_id));
+    }
+
+    if (results.length === 0) {
+      const statusLabel = primaryStatus ? ` ${primaryStatus}` : '';
+      const secondaryLabel = secondaryLocation ? ` that are also in ${secondaryLocation}` : '';
+      const msg = `No${statusLabel} herbs in ${primaryLocation}${secondaryLabel}.`;
+      setResponse(msg);
+      setFoundItems([]);
+      speakResponse(msg);
+      return;
+    }
+
+    const names = results.map(item => item.herbs?.name ?? 'Unknown');
+
+    // Build spoken response
+    const statusLabel = primaryStatus ? ` ${primaryStatus}` : '';
+    const secondaryLabel = secondaryLocation ? ` also in ${secondaryLocation}` : '';
+    let spokenMsg: string;
+    if (names.length === 1) {
+      spokenMsg = `${names[0]} is${statusLabel} in ${primaryLocation}${secondaryLabel}.`;
+    } else if (names.length <= 5) {
+      spokenMsg = `${names.length}${statusLabel} herbs in ${primaryLocation}${secondaryLabel}: ${names.join(', ')}.`;
+    } else {
+      spokenMsg = `${names.length}${statusLabel} herbs in ${primaryLocation}${secondaryLabel}. Showing them now.`;
+    }
+
+    setResponse(spokenMsg);
+    setFoundItems(results);
+    onResult?.(results);
+    speakResponse(spokenMsg);
+  };
+
   // Parse multiple herb names using scan-and-match across all speech alternatives.
-  const parseMultipleHerbs = (query: string, alts: string[] = []): string[] => {
+  const parseMultipleHerbs = (query: string, alts: string[] = [], extra: string[] = []): string[] => {
     const tokenize = (text: string) =>
       text.toLowerCase()
         .replace(/,/g, ' ')
@@ -105,12 +258,12 @@ export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProp
         .filter(t => t.length > 0 && t !== 'and');
 
     // Try primary transcript first
-    const primary = scanForHerbs(tokenize(query));
+    const primary = scanForHerbs(tokenize(query), extra);
     if (primary.length > 0) return primary;
 
     // Fall back through alternatives (Option A)
     for (const alt of alts.slice(1)) {
-      const found = scanForHerbs(tokenize(alt));
+      const found = scanForHerbs(tokenize(alt), extra);
       if (found.length > 0) return found;
     }
 
@@ -167,8 +320,16 @@ export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProp
             )}
           </Button>
           
-          <p className="text-sm text-muted-foreground">
-            {isListening ? "Listening... Speak now" : "Tap to ask about your inventory"}
+          <p className="text-sm text-muted-foreground text-center max-w-xs">
+            {isListening ? (
+              "Listening..."
+            ) : (
+              <>
+                Tap to ask about inventory
+                <span className="block italic text-xs mt-1">"What's low in clinic?"</span>
+                <span className="block italic text-xs">"Anything in clinic low that's also in backstock?"</span>
+              </>
+            )}
           </p>
 
           {transcript && (

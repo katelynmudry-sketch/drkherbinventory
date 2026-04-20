@@ -876,7 +876,10 @@ function BulkStockCountView({
   const bulkUpsert = useBulkUpsert();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
+  const addHerb = useAddHerb();
   const [search, setSearch] = useState('');
+  const [newHerbName, setNewHerbName] = useState('');
+  const [isAddingHerb, setIsAddingHerb] = useState(false);
 
   // herb_id → existing bulk inventory item
   const existingById = useMemo(() => {
@@ -917,12 +920,12 @@ function BulkStockCountView({
       if (name && !coveredHerbIds.has(item.herb_id)) extra.push(name);
     }
     // Merge and sort everything alphabetically by display name
-    return [...HERB_LIST, ...extra].sort((a, b) => {
+    return [...HERB_LIST, ...extra, ...sessionHerbNames.filter(n => !HERB_LIST.map(h => h.toLowerCase()).includes(n.toLowerCase()))].sort((a, b) => {
       const dispA = herbByName.get(a.toLowerCase()) ? getDisplayName(herbByName.get(a.toLowerCase())!) : a;
       const dispB = herbByName.get(b.toLowerCase()) ? getDisplayName(herbByName.get(b.toLowerCase())!) : b;
       return dispA.localeCompare(dispB, undefined, { sensitivity: 'base' });
     });
-  }, [inventory, herbByName]);
+  }, [inventory, herbByName, sessionHerbNames]);
 
   // herbName → selected bulk qty (keyed by herbs.name, looked up via herbByName → herb_id → existingById)
   const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => new Map());
@@ -968,6 +971,26 @@ function BulkStockCountView({
       return next;
     });
   }, [backstockById, allHerbNames, herbByName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Extra herb names added during this stock count session (not yet in HERB_LIST or DB inventory)
+  const [sessionHerbNames, setSessionHerbNames] = useState<string[]>([]);
+
+  const handleAddNewHerb = async () => {
+    const name = newHerbName.trim();
+    if (!name) return;
+    setIsAddingHerb(true);
+    try {
+      await addHerb.mutateAsync({ name });
+      setSessionHerbNames(prev => prev.includes(name) ? prev : [...prev, name]);
+      setSelections(prev => { const next = new Map(prev); next.set(name, null); return next; });
+      setNewHerbName('');
+      toast.success(`"${name}" added`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to add herb');
+    } finally {
+      setIsAddingHerb(false);
+    }
+  };
 
   const toggle = (herbName: string, value: number | 'out') => {
     setUserTouched(prev => new Set(prev).add(herbName));
@@ -1181,6 +1204,27 @@ function BulkStockCountView({
             </div>
           );
         })}
+      </div>
+
+      {/* Add new herb */}
+      <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/30">
+        <Input
+          placeholder="Add new herb by name..."
+          value={newHerbName}
+          onChange={e => setNewHerbName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleAddNewHerb(); }}
+          className="h-8 text-sm"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleAddNewHerb}
+          disabled={!newHerbName.trim() || isAddingHerb}
+          className="shrink-0 gap-1"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {isAddingHerb ? 'Adding...' : 'Add'}
+        </Button>
       </div>
 
       {/* Sticky save bar */}
