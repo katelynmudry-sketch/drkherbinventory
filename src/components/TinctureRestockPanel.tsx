@@ -3,6 +3,7 @@ import { differenceInDays, isPast, format } from 'date-fns';
 import { AlertCircle, Clock, Droplets, ChevronDown, ChevronUp } from 'lucide-react';
 import { useInventory, getDisplayName, InventoryItem } from '@/hooks/useInventory';
 import { useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
+import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
 import { cn } from '@/lib/utils';
 
 export function TinctureRestockPanel() {
@@ -20,7 +21,28 @@ export function TinctureRestockPanel() {
     if (b.status === 'macerating') maceratingBatchByHerbId.set(b.herb_id, b);
   });
 
-  const backstockHerbIds = new Set(backstockInventory.map(i => i.herb_id));
+  // Only count tincture backstock as available if status is not 'out'
+  const backstockByHerbId = new Map<string, InventoryItem>();
+  const backstockByName = new Map<string, InventoryItem>();
+  backstockInventory.forEach(i => {
+    if (i.status !== 'out') {
+      backstockByHerbId.set(i.herb_id, i);
+      if (i.herbs) backstockByName.set(getDisplayName(i.herbs).toLowerCase().trim(), i);
+    }
+  });
+
+  const findBackstockForClinicItem = (clinicItem: InventoryItem): boolean => {
+    if (backstockByHerbId.has(clinicItem.herb_id)) return true;
+    if (clinicItem.herbs) {
+      const name = getDisplayName(clinicItem.herbs).toLowerCase().trim();
+      if (backstockByName.has(name)) return true;
+      for (const k of backstockByName.keys()) {
+        if (k.startsWith(name) || name.startsWith(k)) return true;
+        if (name.length >= 5 && k.length >= 5 && name.slice(0, 6) === k.slice(0, 6)) return true;
+      }
+    }
+    return false;
+  };
 
   const tinctureByHerbId = new Map<string, InventoryItem>();
   tinctureInventory.forEach(item => tinctureByHerbId.set(item.herb_id, item));
@@ -34,7 +56,7 @@ export function TinctureRestockPanel() {
   // These are "action needed" — nothing is in process
   const tinctureAlerts = clinicNeeds.filter(clinicItem => {
     const herbId = clinicItem.herb_id;
-    const hasBackstock = backstockHerbIds.has(herbId);
+    const hasBackstock = findBackstockForClinicItem(clinicItem);
     const hasBatch = activeBatchByHerbId.has(herbId) || maceratingBatchByHerbId.has(herbId);
     const hasTinctureBrewing = tinctureByHerbId.has(herbId);
     return !hasBackstock && !hasBatch && !hasTinctureBrewing;
@@ -68,7 +90,7 @@ export function TinctureRestockPanel() {
       activeBatchByHerbId.get(clinicItem.herb_id) ??
       (tinctureItem ? activeBatchByHerbId.get(tinctureItem.herb_id) : undefined) ??
       null;
-    const hasBackstock = backstockHerbIds.has(clinicItem.herb_id);
+    const hasBackstock = findBackstockForClinicItem(clinicItem);
     const needsAction = !hasBackstock && !batch && !tinctureItem;
     return { clinicItem, tinctureItem, batch, hasBackstock, needsAction };
   });
@@ -140,6 +162,10 @@ interface RestockRowProps {
 
 function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction }: RestockRowProps) {
   const herbName = clinicItem.herbs ? getDisplayName(clinicItem.herbs) : 'Unknown';
+  const alcohol = clinicItem.herbs
+    ? getTinctureAlcohol(clinicItem.herbs.name) ??
+      (clinicItem.herbs.common_name ? getTinctureAlcohol(clinicItem.herbs.common_name) : null)
+    : null;
 
   return (
     <div className={cn(
@@ -147,13 +173,18 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
       needsAction ? "bg-red-500/5 border border-red-500/20" : "bg-background/60"
     )}>
       <span className="text-sm font-medium truncate flex-1">{herbName}</span>
+      {alcohol && (
+        <span className="text-xs whitespace-nowrap text-foreground">
+          {alcohol}
+        </span>
+      )}
       <ClinicStatusBadge status={clinicItem.status as 'low' | 'out'} />
       {hasBackstock && (
         <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-blue-500/20 text-blue-700 dark:text-blue-400">
           Backstock
         </span>
       )}
-      <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} />
+      <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} hasBackstock={hasBackstock} />
     </div>
   );
 }
@@ -172,7 +203,7 @@ function ClinicStatusBadge({ status }: { status: 'low' | 'out' }) {
   );
 }
 
-function TinctureBadge({ tinctureItem, batch, needsAction }: { tinctureItem: InventoryItem | null; batch: TinctureBatch | null; needsAction: boolean }) {
+function TinctureBadge({ tinctureItem, batch, needsAction, hasBackstock }: { tinctureItem: InventoryItem | null; batch: TinctureBatch | null; needsAction: boolean; hasBackstock: boolean }) {
   if (!tinctureItem && !batch) {
     return (
       <span className={cn(
@@ -181,7 +212,7 @@ function TinctureBadge({ tinctureItem, batch, needsAction }: { tinctureItem: Inv
           ? "bg-red-500/20 text-red-700 dark:text-red-400"
           : "bg-muted text-muted-foreground"
       )}>
-        {needsAction ? "Start tincture" : "No batch"}
+        {needsAction ? (hasBackstock ? "Grab backstock" : "Start tincture") : "No batch"}
       </span>
     );
   }

@@ -31,7 +31,7 @@ const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }
 
 const DEFAULT_STATUS: Record<InventoryLocation, string> = {
   clinic:        'low',
-  backstock:     '',        // untagged by default
+  backstock:     'untagged', // untagged by default
   tincture:      'full',
   bulk:          'full',
   bulk_backstock:'full',
@@ -85,7 +85,7 @@ export function AddHerbDialog() {
 
       // For backstock, store size in notes field; status is always 'full'
       const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
-      const notes = location === 'backstock' && status ? status : undefined;
+      const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
 
       await addInventory.mutateAsync({
         herb_id: herb.id,
@@ -157,7 +157,7 @@ export function AddHerbDialog() {
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {location === 'backstock' && (
-                    <SelectItem value="">Untagged</SelectItem>
+                    <SelectItem value="untagged">Untagged</SelectItem>
                   )}
                   {statusOptions.map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>

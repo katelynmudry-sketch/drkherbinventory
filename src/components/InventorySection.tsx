@@ -30,6 +30,7 @@ import { usePressBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
+import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
 import { format, differenceInDays, isPast, addWeeks } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -43,12 +44,37 @@ interface InventorySectionProps {
 
 export function InventorySection({ location, title, icon, description, searchQuery = '' }: InventorySectionProps) {
   const { data: inventory = [], isLoading } = useInventory(location);
+  const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: herbs = [] } = useHerbs();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const pressBatch = usePressBatch();
+
+  // herb_ids AND display names that have usable (non-out) backstock
+  const { backstockHerbIds, backstockNames } = useMemo(() => {
+    const usable = backstockInventory.filter(i => i.status !== 'out');
+    return {
+      backstockHerbIds: new Set(usable.map(i => i.herb_id)),
+      backstockNames: new Set(usable.map(i => i.herbs ? getDisplayName(i.herbs).toLowerCase().trim() : '').filter(Boolean)),
+    };
+  }, [backstockInventory]);
+
+  const herbHasBackstock = (item: InventoryItem) => {
+    if (backstockHerbIds.has(item.herb_id)) return true;
+    if (item.herbs) {
+      const name = getDisplayName(item.herbs).toLowerCase().trim();
+      if (backstockNames.has(name)) return true;
+      // partial match — e.g. "bupleurum" in backstock names that start with it
+      for (const n of backstockNames) {
+        if (n.startsWith(name) || name.startsWith(n)) return true;
+        // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
+        if (name.length >= 5 && n.length >= 5 && name.slice(0, 6) === n.slice(0, 6)) return true;
+      }
+    }
+    return false;
+  };
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
@@ -94,7 +120,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const handleAddAllStaged = async () => {
     if (stagedHerbs.length === 0) return;
     const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
-    const notes = location === 'backstock' && addSize ? addSize : undefined;
+    const notes = location === 'backstock' && addSize && addSize !== 'untagged' ? addSize : undefined;
     await Promise.all(stagedHerbs.map(h =>
       addInventory.mutateAsync({
         herb_id: h.id,
@@ -130,7 +156,7 @@ export function InventorySection({ location, title, icon, description, searchQue
       await updateHerb.mutateAsync({ id: herbId, name: newHerbName.trim() });
     }
     if (location === 'backstock') {
-      await updateInventory.mutateAsync({ id, notes: size || null } as any);
+      await updateInventory.mutateAsync({ id, notes: (size && size !== 'untagged') ? size : null } as any);
     } else if (location !== 'tincture') {
       await updateInventory.mutateAsync({ id, status });
     }
@@ -286,7 +312,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                         <SelectValue placeholder="Size (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Untagged</SelectItem>
+                        <SelectItem value="untagged">Untagged</SelectItem>
                         <SelectItem value="small">Small</SelectItem>
                         <SelectItem value="large">Large</SelectItem>
                       </SelectContent>
@@ -382,6 +408,7 @@ export function InventorySection({ location, title, icon, description, searchQue
             <InventoryItemRow
               key={item.id}
               item={item}
+              hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
               isEditing={editingId === item.id}
               editStatus={editStatus}
               editHerbName={editHerbName}
@@ -395,6 +422,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               onSaveEdit={() => handleUpdateStatus(item.id, editStatus, item.herb_id, editHerbName, editSize)}
               onStatusChange={setEditStatus}
               onSizeChange={setEditSize}
+              editSize={editSize}
               onHerbNameChange={setEditHerbName}
               onDelete={() => handleDelete(item.id)}
               onMarkDone={() => handleMarkTinctureDone(item.id)}
@@ -411,6 +439,7 @@ export function InventorySection({ location, title, icon, description, searchQue
 
 interface InventoryItemRowProps {
   item: InventoryItem;
+  hasBackstock?: boolean;
   isEditing: boolean;
   editStatus: InventoryStatus;
   editHerbName: string;
@@ -418,6 +447,7 @@ interface InventoryItemRowProps {
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onStatusChange: (status: InventoryStatus) => void;
+  editSize: string;
   onSizeChange: (size: string) => void;
   onHerbNameChange: (name: string) => void;
   onDelete: () => void;
@@ -429,6 +459,7 @@ interface InventoryItemRowProps {
 
 function InventoryItemRow({
   item,
+  hasBackstock = false,
   isEditing,
   editStatus,
   editHerbName,
@@ -437,6 +468,7 @@ function InventoryItemRow({
   onSaveEdit,
   onStatusChange,
   onSizeChange,
+  editSize,
   onHerbNameChange,
   onDelete,
   onMarkDone,
@@ -484,6 +516,14 @@ function InventoryItemRow({
               })()}
             </>
           )}
+          {(location === 'tincture' || location === 'clinic') && !isEditing && (() => {
+            const alcohol = item.herbs ? getTinctureAlcohol(item.herbs.name) ?? (item.herbs.common_name ? getTinctureAlcohol(item.herbs.common_name) : null) : null;
+            return alcohol ? (
+              <span className="inline-block mt-0.5 text-xs text-foreground">
+                {alcohol}
+              </span>
+            ) : null;
+          })()}
           {location === 'tincture' && readyDate && !isEditing && (
             <div className="flex items-center gap-1 mt-1">
               <Clock className="h-3 w-3 text-muted-foreground" />
@@ -515,14 +555,14 @@ function InventoryItemRow({
               {/* Backstock: size tag stored in notes */}
               {location === 'backstock' && (
                 <Select
-                  value={item.notes || ''}
+                  value={editSize}
                   onValueChange={(v) => onSizeChange(v)}
                 >
                   <SelectTrigger className="w-24 h-8">
                     <SelectValue placeholder="Size" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Untagged</SelectItem>
+                    <SelectItem value="untagged">Untagged</SelectItem>
                     <SelectItem value="small">Small</SelectItem>
                     <SelectItem value="large">Large</SelectItem>
                   </SelectContent>
@@ -539,6 +579,11 @@ function InventoryItemRow({
           ) : (
             <>
               <StatusBadge status={item.status} location={location} notes={item.notes} />
+              {hasBackstock && (
+                <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-blue-500/20 text-blue-700 dark:text-blue-400">
+                  Backstock
+                </span>
+              )}
               {location === 'tincture' && (
                 <Button
                   size="sm"
