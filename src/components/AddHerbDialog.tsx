@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Leaf, Search, Plus } from 'lucide-react';
+import { Leaf, Search, Plus, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,44 +17,48 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { toast } from 'sonner';
 
-// Status options per location
 const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }[]> = {
   clinic:        [{ value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
   backstock:     [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }],
-  tincture:      [],  // no status picker for tincture
+  tincture:      [],
   bulk:          [{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
   bulk_backstock:[{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
 };
 
 const DEFAULT_STATUS: Record<InventoryLocation, string> = {
   clinic:        'low',
-  backstock:     'untagged', // untagged by default
+  backstock:     'untagged',
   tincture:      'full',
   bulk:          'full',
   bulk_backstock:'full',
 };
+
+interface StagedHerb {
+  name: string;
+  isNew: boolean;
+}
 
 export function AddHerbDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState<InventoryLocation>('clinic');
   const [status, setStatus] = useState<string>(DEFAULT_STATUS['clinic']);
+  const [staged, setStaged] = useState<StagedHerb[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { data: existingHerbs = [] } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
 
-  // Reset status when location changes
   const handleLocationChange = (v: InventoryLocation) => {
     setLocation(v);
     setStatus(DEFAULT_STATUS[v]);
   };
 
-  // Filter herbs by search — match on name, common_name, latin_name
   const filteredHerbs = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return existingHerbs;
@@ -65,54 +69,83 @@ export function AddHerbDialog() {
     );
   }, [search, existingHerbs]);
 
-  // Check if the typed text is a new herb (no exact match)
   const exactMatch = existingHerbs.find(
     h => h.name.toLowerCase() === search.trim().toLowerCase()
   );
   const isNewHerb = search.trim().length > 0 && !exactMatch && filteredHerbs.length === 0;
 
-  const handleAdd = async (herbName: string) => {
-    if (!herbName.trim()) return;
+  const stageHerb = (name: string, isNew: boolean) => {
+    if (!name.trim()) return;
+    const displayName = isNew
+      ? name.trim().charAt(0).toUpperCase() + name.trim().slice(1)
+      : name;
+    if (!staged.find(s => s.name.toLowerCase() === displayName.toLowerCase())) {
+      setStaged(prev => [...prev, { name: displayName, isNew }]);
+    }
+    setSearch('');
+  };
+
+  const removeStaged = (name: string) => {
+    setStaged(prev => prev.filter(s => s.name !== name));
+  };
+
+  const handleConfirm = async () => {
+    if (staged.length === 0) return;
     setIsProcessing(true);
 
-    try {
-      // Resolve or create herb
-      let herb = existingHerbs.find(h => h.name.toLowerCase() === herbName.trim().toLowerCase());
-      if (!herb) {
-        const capitalized = herbName.trim().charAt(0).toUpperCase() + herbName.trim().slice(1);
-        herb = await addHerb.mutateAsync({ name: capitalized });
-      }
+    let successCount = 0;
+    for (const entry of staged) {
+      try {
+        let herb = existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
+        if (!herb) {
+          herb = await addHerb.mutateAsync({ name: entry.name });
+        }
 
-      // For backstock, store size in notes field; status is always 'full'
-      const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
-      const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
+        const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
+        const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
 
-      await addInventory.mutateAsync({
-        herb_id: herb.id,
-        location,
-        status: inventoryStatus,
-        ...(notes ? { notes } : {}),
-      });
+        await addInventory.mutateAsync({
+          herb_id: herb.id,
+          location,
+          status: inventoryStatus,
+          ...(notes ? { notes } : {}),
+        });
 
-      toast.success(`Added ${herb.name} to ${location}`);
-      setSearch('');
-      setStatus(DEFAULT_STATUS[location]);
-      setIsOpen(false);
-    } catch (error: any) {
-      if (error?.code === '23505') {
-        toast.error(`${herbName} already exists in ${location}`);
-      } else {
-        toast.error(`Failed to add herb`);
-        console.error(error);
+        successCount++;
+      } catch (error: any) {
+        if (error?.code === '23505') {
+          toast.error(`${entry.name} already exists in ${location}`);
+        } else {
+          toast.error(`Failed to add ${entry.name}`);
+          console.error(error);
+        }
       }
     }
+
+    if (successCount > 0) {
+      toast.success(`Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${location}`);
+    }
+
+    setStaged([]);
+    setSearch('');
+    setStatus(DEFAULT_STATUS[location]);
     setIsProcessing(false);
+    setIsOpen(false);
+  };
+
+  const handleClose = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setSearch('');
+      setStaged([]);
+      setStatus(DEFAULT_STATUS[location]);
+    }
   };
 
   const statusOptions = STATUS_OPTIONS[location];
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { setIsOpen(open); if (!open) { setSearch(''); setStatus(DEFAULT_STATUS[location]); } }}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2">
           <Leaf className="h-4 w-4" />
@@ -144,14 +177,11 @@ export function AddHerbDialog() {
             </Select>
           </div>
 
-          {/* Status — hidden for tincture, size picker for backstock */}
+          {/* Status */}
           {location !== 'tincture' && (
             <div className="space-y-2">
               <Label>{location === 'backstock' ? 'Size' : 'Status'}</Label>
-              <Select
-                value={status}
-                onValueChange={setStatus}
-              >
+              <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="bg-background">
                   <SelectValue placeholder={location === 'backstock' ? 'Untagged' : 'Select status'} />
                 </SelectTrigger>
@@ -169,7 +199,7 @@ export function AddHerbDialog() {
 
           {/* Herb search */}
           <div className="space-y-2">
-            <Label>Herb</Label>
+            <Label>Herbs</Label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -181,7 +211,6 @@ export function AddHerbDialog() {
               />
             </div>
 
-            {/* Matched herb list */}
             {search.trim().length > 0 && (
               <div className="border rounded-md max-h-48 overflow-y-auto">
                 {filteredHerbs.length > 0 ? (
@@ -190,7 +219,7 @@ export function AddHerbDialog() {
                       key={herb.id}
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
-                      onClick={() => handleAdd(herb.name)}
+                      onClick={() => stageHerb(herb.name, false)}
                       disabled={isProcessing}
                     >
                       <span className="font-medium">{herb.name}</span>
@@ -206,7 +235,7 @@ export function AddHerbDialog() {
                   <button
                     type="button"
                     className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-primary"
-                    onClick={() => handleAdd(search.trim())}
+                    onClick={() => stageHerb(search.trim(), true)}
                     disabled={isProcessing}
                   >
                     <Plus className="inline h-3 w-3 mr-1" />
@@ -216,10 +245,47 @@ export function AddHerbDialog() {
               </div>
             )}
 
-            {search.trim().length === 0 && (
+            {search.trim().length === 0 && staged.length === 0 && (
               <p className="text-xs text-muted-foreground">Start typing to search your herb list</p>
             )}
           </div>
+
+          {/* Staged herbs */}
+          {staged.length > 0 && (
+            <div className="space-y-2">
+              <Label>Selected ({staged.length})</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {staged.map(s => (
+                  <Badge key={s.name} variant="secondary" className="gap-1 pr-1">
+                    {s.name}
+                    {s.isNew && <span className="text-xs text-muted-foreground">new</span>}
+                    <button
+                      type="button"
+                      onClick={() => removeStaged(s.name)}
+                      className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                      disabled={isProcessing}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Confirm button */}
+          <Button
+            className="w-full gap-2"
+            onClick={handleConfirm}
+            disabled={staged.length === 0 || isProcessing}
+          >
+            <Check className="h-4 w-4" />
+            {isProcessing
+              ? 'Adding...'
+              : staged.length === 0
+              ? 'Select herbs above'
+              : `Add ${staged.length} herb${staged.length > 1 ? 's' : ''} to ${location}`}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
