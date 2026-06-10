@@ -433,6 +433,51 @@ export function useUpdateLowThreshold() {
   });
 }
 
+// Set (or create) a herb's inventory row for a location to a given status —
+// used when pressing a tincture to push it to Clinic (and optionally Backstock) as 'full'
+export function useSetInventoryStatusForHerb() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ herb_id, location, status }: { herb_id: string; location: InventoryLocation; status: InventoryStatus }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: existing, error: findError } = await supabase
+        .from('inventory')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('herb_id', herb_id)
+        .eq('location', location)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      if (existing) {
+        const { error } = await supabase
+          .from('inventory')
+          .update({ status })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('inventory')
+          .insert({
+            herb_id,
+            location,
+            status,
+            user_id: user.id,
+            tincture_started_at: null,
+            tincture_ready_at: null,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
 // Mark multiple inventory items as 'ordered'
 export function useMarkAsOrdered() {
   const queryClient = useQueryClient();

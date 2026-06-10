@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Dialog,
@@ -21,6 +22,7 @@ import {
   useUpdateInventory,
   useDeleteInventory,
   useUpdateHerb,
+  useSetInventoryStatusForHerb,
   InventoryLocation,
   InventoryStatus,
   InventoryItem,
@@ -51,6 +53,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const pressBatch = usePressBatch();
+  const setInventoryStatus = useSetInventoryStatusForHerb();
 
   // herb_ids AND display names that have usable (non-out) backstock
   const { backstockHerbIds, backstockNames } = useMemo(() => {
@@ -90,6 +93,8 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [pressItem, setPressItem] = useState<InventoryItem | null>(null);
+  const [pressAlsoBackstock, setPressAlsoBackstock] = useState(false);
 
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
@@ -171,17 +176,35 @@ export function InventorySection({ location, title, icon, description, searchQue
     setEditingId(null);
   };
 
-  // PRESSED: batch moves to active, inventory row is deleted (tincture is done macerating)
-  const handlePress = async (item: InventoryItem) => {
+  // PRESSED: opens a confirmation dialog before moving the herb to Clinic
+  const handlePress = (item: InventoryItem) => {
+    setPressAlsoBackstock(false);
+    setPressItem(item);
+  };
+
+  // Confirmed press: batch moves to active, herb is added/updated in Clinic as
+  // 'full' (replacing any low/out status), optionally also added to Backstock,
+  // and the tincture inventory row is deleted (tincture is done macerating)
+  const handleConfirmPress = async () => {
+    const item = pressItem;
+    if (!item) return;
     try {
       if (item.current_batch_id) {
         await pressBatch.mutateAsync(item.current_batch_id);
       }
+      await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
+      if (pressAlsoBackstock) {
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full' });
+      }
       // Remove the tincture inventory row — the batch record is the permanent record now
       await deleteInventory.mutateAsync(item.id);
-      toast.success(`${item.herbs ? getDisplayName(item.herbs) : 'Herb'} pressed — batch recorded`);
+      const herbName = item.herbs ? getDisplayName(item.herbs) : 'Herb';
+      toast.success(`${herbName} pressed — added to Clinic as Full${pressAlsoBackstock ? ' and Backstock' : ''}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to press batch');
+    } finally {
+      setPressItem(null);
+      setPressAlsoBackstock(false);
     }
   };
 
@@ -433,6 +456,43 @@ export function InventorySection({ location, title, icon, description, searchQue
           ))
         )}
       </CardContent>}
+
+      {/* Press confirmation dialog: pushes a finished tincture to Clinic as Full */}
+      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoBackstock(false); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add to Clinic as Full</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Add the following to Clinic as Full. This will clear any existing Low or Out status.
+            </p>
+            {pressItem && (
+              <div className="border rounded-md divide-y">
+                <div className="px-3 py-2 text-sm font-medium">
+                  {pressItem.herbs ? getDisplayName(pressItem.herbs) : 'Herb'}
+                </div>
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={pressAlsoBackstock}
+                onCheckedChange={(checked) => setPressAlsoBackstock(checked === true)}
+              />
+              Also add to Backstock
+            </label>
+            <Button
+              className="w-full"
+              onClick={handleConfirmPress}
+              disabled={pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending}
+            >
+              {pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending
+                ? 'Adding...'
+                : 'Add to Clinic'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
