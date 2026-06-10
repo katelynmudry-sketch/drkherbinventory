@@ -439,7 +439,7 @@ export function useSetInventoryStatusForHerb() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ herb_id, location, status }: { herb_id: string; location: InventoryLocation; status: InventoryStatus }) => {
+    mutationFn: async ({ herb_id, location, status, notes }: { herb_id: string; location: InventoryLocation; status: InventoryStatus; notes?: string | null }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -453,9 +453,11 @@ export function useSetInventoryStatusForHerb() {
       if (findError) throw findError;
 
       if (existing) {
+        const payload: Record<string, unknown> = { status };
+        if (notes !== undefined) payload.notes = notes;
         const { error } = await supabase
           .from('inventory')
-          .update({ status })
+          .update(payload)
           .eq('id', existing.id);
         if (error) throw error;
       } else {
@@ -465,6 +467,7 @@ export function useSetInventoryStatusForHerb() {
             herb_id,
             location,
             status,
+            notes: notes ?? null,
             user_id: user.id,
             tincture_started_at: null,
             tincture_ready_at: null,

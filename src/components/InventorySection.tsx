@@ -69,7 +69,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (item.herbs) {
       const name = getDisplayName(item.herbs).toLowerCase().trim();
       if (backstockNames.has(name)) return true;
-      // partial match — e.g. "bupleurum" in backstock names that start with it
+      // partial match ï¿½ e.g. "bupleurum" in backstock names that start with it
       for (const n of backstockNames) {
         if (n.startsWith(name) || name.startsWith(n)) return true;
         // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
@@ -95,6 +95,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [pressItem, setPressItem] = useState<InventoryItem | null>(null);
   const [pressAlsoBackstock, setPressAlsoBackstock] = useState(false);
+  const [pressBackstockSize, setPressBackstockSize] = useState('');
 
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
@@ -179,6 +180,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   // PRESSED: opens a confirmation dialog before moving the herb to Clinic
   const handlePress = (item: InventoryItem) => {
     setPressAlsoBackstock(false);
+    setPressBackstockSize('');
     setPressItem(item);
   };
 
@@ -194,7 +196,8 @@ export function InventorySection({ location, title, icon, description, searchQue
       }
       await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
       if (pressAlsoBackstock) {
-        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full' });
+        const size = pressBackstockSize && pressBackstockSize !== 'untagged' ? pressBackstockSize : null;
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size });
       }
       // Remove the tincture inventory row â€” the batch record is the permanent record now
       await deleteInventory.mutateAsync(item.id);
@@ -205,6 +208,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     } finally {
       setPressItem(null);
       setPressAlsoBackstock(false);
+      setPressBackstockSize('');
     }
   };
 
@@ -458,7 +462,7 @@ export function InventorySection({ location, title, icon, description, searchQue
       </CardContent>}
 
       {/* Press confirmation dialog: pushes a finished tincture to Clinic as Full */}
-      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoBackstock(false); } }}>
+      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoBackstock(false); setPressBackstockSize(''); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add to Clinic as Full</DialogTitle>
@@ -481,6 +485,18 @@ export function InventorySection({ location, title, icon, description, searchQue
               />
               Also add to Backstock
             </label>
+            {pressAlsoBackstock && (
+              <Select value={pressBackstockSize} onValueChange={setPressBackstockSize}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Size (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="untagged">Untagged</SelectItem>
+                  <SelectItem value="small">Small</SelectItem>
+                  <SelectItem value="large">Large</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <Button
               className="w-full"
               onClick={handleConfirmPress}
