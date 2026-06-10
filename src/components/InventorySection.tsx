@@ -69,7 +69,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (item.herbs) {
       const name = getDisplayName(item.herbs).toLowerCase().trim();
       if (backstockNames.has(name)) return true;
-      // partial match ï¿½ e.g. "bupleurum" in backstock names that start with it
+      // partial match — e.g. "bupleurum" in backstock names that start with it
       for (const n of backstockNames) {
         if (n.startsWith(name) || name.startsWith(n)) return true;
         // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
