@@ -69,7 +69,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (item.herbs) {
       const name = getDisplayName(item.herbs).toLowerCase().trim();
       if (backstockNames.has(name)) return true;
-      // partial match — e.g. "bupleurum" in backstock names that start with it
+      // partial match ï¿½ e.g. "bupleurum" in backstock names that start with it
       for (const n of backstockNames) {
         if (n.startsWith(name) || name.startsWith(n)) return true;
         // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
@@ -319,13 +319,14 @@ export function InventorySection({ location, title, icon, description, searchQue
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
 
-                  {/* Clinic: Low / Out */}
+                  {/* Clinic: Full / Low / Out */}
                   {location === 'clinic' && (
                     <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as InventoryStatus)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="full">Full</SelectItem>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="out">Out</SelectItem>
                       </SelectContent>
@@ -616,13 +617,14 @@ function InventoryItemRow({
         <div className="flex items-center gap-2 shrink-0">
           {isEditing ? (
             <>
-              {/* Clinic: Low / Out only */}
+              {/* Clinic: Full / Low / Out */}
               {location === 'clinic' && (
                 <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
                   <SelectTrigger className="w-24 h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="full">Full</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="out">Out</SelectItem>
                   </SelectContent>
