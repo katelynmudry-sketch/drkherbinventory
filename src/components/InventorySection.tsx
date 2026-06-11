@@ -180,7 +180,7 @@ export function InventorySection({ location, title, icon, description, searchQue
 
   // PRESSED: opens a confirmation dialog before moving the herb to Clinic and/or Backstock
   const handlePress = (item: InventoryItem) => {
-    setPressAlsoClinic(false);
+    setPressAlsoClinic(true);
     setPressAlsoBackstock(false);
     setPressBackstockSize('');
     setPressItem(item);
