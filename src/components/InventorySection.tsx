@@ -94,6 +94,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [pressItem, setPressItem] = useState<InventoryItem | null>(null);
+  const [pressAlsoClinic, setPressAlsoClinic] = useState(false);
   const [pressAlsoBackstock, setPressAlsoBackstock] = useState(false);
   const [pressBackstockSize, setPressBackstockSize] = useState('');
 
@@ -177,16 +178,18 @@ export function InventorySection({ location, title, icon, description, searchQue
     setEditingId(null);
   };
 
-  // PRESSED: opens a confirmation dialog before moving the herb to Clinic
+  // PRESSED: opens a confirmation dialog before moving the herb to Clinic and/or Backstock
   const handlePress = (item: InventoryItem) => {
+    setPressAlsoClinic(false);
     setPressAlsoBackstock(false);
     setPressBackstockSize('');
     setPressItem(item);
   };
 
-  // Confirmed press: batch moves to active, herb is added/updated in Clinic as
-  // 'full' (replacing any low/out status), optionally also added to Backstock,
-  // and the tincture inventory row is deleted (tincture is done macerating)
+  // Confirmed press: batch moves to active, the tincture inventory row is
+  // deleted (tincture is done macerating), and — only if explicitly checked —
+  // the herb is added/updated in Clinic as 'full' (replacing any low/out
+  // status) and/or added to Backstock
   const handleConfirmPress = async () => {
     const item = pressItem;
     if (!item) return;
@@ -194,19 +197,25 @@ export function InventorySection({ location, title, icon, description, searchQue
       if (item.current_batch_id) {
         await pressBatch.mutateAsync(item.current_batch_id);
       }
-      await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
+      const destinations: string[] = [];
+      if (pressAlsoClinic) {
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
+        destinations.push('Clinic as Full');
+      }
       if (pressAlsoBackstock) {
         const size = pressBackstockSize && pressBackstockSize !== 'untagged' ? pressBackstockSize : null;
         await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size });
+        destinations.push('Backstock');
       }
       // Remove the tincture inventory row — the batch record is the permanent record now
       await deleteInventory.mutateAsync(item.id);
       const herbName = item.herbs ? getDisplayName(item.herbs) : 'Herb';
-      toast.success(`${herbName} pressed — added to Clinic as Full${pressAlsoBackstock ? ' and Backstock' : ''}`);
+      toast.success(`${herbName} pressed${destinations.length ? ` — added to ${destinations.join(' and ')}` : ''}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to press batch');
     } finally {
       setPressItem(null);
+      setPressAlsoClinic(false);
       setPressAlsoBackstock(false);
       setPressBackstockSize('');
     }
@@ -462,16 +471,13 @@ export function InventorySection({ location, title, icon, description, searchQue
         )}
       </CardContent>}
 
-      {/* Press confirmation dialog: pushes a finished tincture to Clinic as Full */}
-      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoBackstock(false); setPressBackstockSize(''); } }}>
+      {/* Press confirmation dialog: lets you choose where the pressed tincture goes */}
+      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoClinic(false); setPressAlsoBackstock(false); setPressBackstockSize(''); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add to Clinic as Full</DialogTitle>
+            <DialogTitle>Tincture Pressed</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Add the following to Clinic as Full. This will clear any existing Low or Out status.
-            </p>
             {pressItem && (
               <div className="border rounded-md divide-y">
                 <div className="px-3 py-2 text-sm font-medium">
@@ -479,12 +485,22 @@ export function InventorySection({ location, title, icon, description, searchQue
                 </div>
               </div>
             )}
+            <p className="text-sm text-muted-foreground">
+              The batch will be recorded. Choose where to send this tincture, if anywhere:
+            </p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={pressAlsoClinic}
+                onCheckedChange={(checked) => setPressAlsoClinic(checked === true)}
+              />
+              Add to Clinic as Full (clears any Low/Out)
+            </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <Checkbox
                 checked={pressAlsoBackstock}
                 onCheckedChange={(checked) => setPressAlsoBackstock(checked === true)}
               />
-              Also add to Backstock
+              Add to Backstock
             </label>
             {pressAlsoBackstock && (
               <Select value={pressBackstockSize} onValueChange={setPressBackstockSize}>
@@ -504,8 +520,8 @@ export function InventorySection({ location, title, icon, description, searchQue
               disabled={pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending}
             >
               {pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending
-                ? 'Adding...'
-                : 'Add to Clinic'}
+                ? 'Saving...'
+                : 'Confirm'}
             </Button>
           </div>
         </DialogContent>
