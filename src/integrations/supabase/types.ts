@@ -286,6 +286,48 @@ export type Database = {
         }
         Relationships: []
       }
+      workspace_config: {
+        Row: {
+          id: string
+          user_id: string
+          industry_key: string
+          item_label_singular: string
+          item_label_plural: string
+          locations: Json
+          statuses: Json
+          voice_config: Json
+          features: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          industry_key?: string
+          item_label_singular?: string
+          item_label_plural?: string
+          locations?: Json
+          statuses?: Json
+          voice_config?: Json
+          features?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          industry_key?: string
+          item_label_singular?: string
+          item_label_plural?: string
+          locations?: Json
+          statuses?: Json
+          voice_config?: Json
+          features?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
