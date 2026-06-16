@@ -20,7 +20,12 @@
       "Bash(npm run dev:*)",
       "Bash(gh run list:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:katelynmudry-sketch.github.io)"
+      "WebFetch(domain:katelynmudry-sketch.github.io)",
+      "mcp__04558b7d-55a1-465b-940c-446bc5d6abe6__netlify-project-services-reader",
+      "mcp__04558b7d-55a1-465b-940c-446bc5d6abe6__netlify-team-services-reader",
+      "mcp__04558b7d-55a1-465b-940c-446bc5d6abe6__netlify-user-services-reader",
+      "mcp__04558b7d-55a1-465b-940c-446bc5d6abe6__netlify-project-services-updater",
+      "mcp__04558b7d-55a1-465b-940c-446bc5d6abe6__netlify-deploy-services-updater"
     ]
   }
 }
