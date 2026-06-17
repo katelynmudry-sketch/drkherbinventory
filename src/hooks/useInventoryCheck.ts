@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { InventoryItem, InventoryLocation } from './useInventory';
+import { isMockMode } from '@/lib/mockMode';
+import { findHerbByName, mockInventory } from '@/lib/mockData';
 
 export interface AvailabilityInfo {
   location: InventoryLocation;
@@ -9,10 +11,16 @@ export interface AvailabilityInfo {
 
 export async function checkHerbAvailability(herbId: string, excludeLocation?: InventoryLocation): Promise<AvailabilityInfo[]> {
   const locations: InventoryLocation[] = ['backstock', 'tincture'];
-  
+
   if (excludeLocation) {
     const filtered = locations.filter(loc => loc !== excludeLocation);
-    
+
+    if (isMockMode) {
+      return mockInventory
+        .filter((item) => item.herb_id === herbId && filtered.includes(item.location))
+        .map((item) => ({ location: item.location, status: item.status, tinctureReadyAt: item.tincture_ready_at }));
+    }
+
     const { data, error } = await supabase
       .from('inventory')
       .select('location, status, tincture_ready_at')
@@ -32,20 +40,31 @@ export async function checkHerbAvailability(herbId: string, excludeLocation?: In
 }
 
 export async function checkHerbAvailabilityByName(herbName: string): Promise<{ herbId: string | null; availability: AvailabilityInfo[] }> {
+  if (isMockMode) {
+    const herb = findHerbByName(herbName);
+    if (!herb) return { herbId: null, availability: [] };
+    return {
+      herbId: herb.id,
+      availability: mockInventory
+        .filter((item) => item.herb_id === herb.id && ['backstock', 'tincture'].includes(item.location))
+        .map((item) => ({ location: item.location, status: item.status, tinctureReadyAt: item.tincture_ready_at })),
+    };
+  }
+
   // First find the herb by name
   const { data: herbs, error: herbError } = await supabase
     .from('herbs')
     .select('id')
     .ilike('name', herbName)
     .limit(1);
-  
+
   if (herbError) throw herbError;
   if (!herbs || herbs.length === 0) {
     return { herbId: null, availability: [] };
   }
-  
+
   const herbId = herbs[0].id;
-  
+
   // Check backstock and tincture
   const { data: inventory, error: invError } = await supabase
     .from('inventory')

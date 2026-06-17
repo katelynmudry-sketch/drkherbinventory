@@ -2,8 +2,11 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Falls back to placeholder values in mock mode (no real Supabase project
+// configured) so this client can construct without crashing the app at
+// import time — mock mode never actually issues network calls through it.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://mock.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'mock-key';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

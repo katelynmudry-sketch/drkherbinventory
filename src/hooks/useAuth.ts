@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { isMockMode } from '@/lib/mockMode';
+import { mockUser } from '@/lib/mockData';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(isMockMode ? mockUser : null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isMockMode);
 
   useEffect(() => {
+    if (isMockMode) return;
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -28,6 +32,7 @@ export function useAuth() {
   }, []);
 
   const signUp = async (email: string, password: string) => {
+    if (isMockMode) return { error: null };
     const redirectUrl = `${window.location.origin}/`;
     const { error } = await supabase.auth.signUp({
       email,
@@ -38,11 +43,13 @@ export function useAuth() {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (isMockMode) return { error: null };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error };
   };
 
   const signOut = async () => {
+    if (isMockMode) return { error: null };
     const { error } = await supabase.auth.signOut();
     return { error };
   };
