@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Herb } from '@/hooks/useInventory';
+import { isMockMode } from '@/lib/mockMode';
+import { findHerb, mockBatches, mockInventory, nextId, now } from '@/lib/mockData';
 
 export interface TinctureBatch {
   id: string;
@@ -22,6 +24,8 @@ export function useTinctureBatches() {
   return useQuery({
     queryKey: ['tincture_batches'],
     queryFn: async (): Promise<TinctureBatch[]> => {
+      if (isMockMode) return [...mockBatches].sort((a, b) => b.batch_date.localeCompare(a.batch_date));
+
       const { data, error } = await supabase
         .from('tincture_batches')
         .select('*, herbs(*)')
@@ -39,6 +43,8 @@ export function useCurrentBatch(herbId: string | undefined) {
     enabled: !!herbId,
     queryFn: async (): Promise<TinctureBatch | null> => {
       if (!herbId) return null;
+      if (isMockMode) return mockBatches.find((b) => b.herb_id === herbId && b.status === 'active') ?? null;
+
       const { data, error } = await supabase
         .from('tincture_batches')
         .select('*, herbs(*)')
@@ -58,6 +64,8 @@ export function useMaceratingBatch(herbId: string | undefined) {
     enabled: !!herbId,
     queryFn: async (): Promise<TinctureBatch | null> => {
       if (!herbId) return null;
+      if (isMockMode) return mockBatches.find((b) => b.herb_id === herbId && b.status === 'macerating') ?? null;
+
       const { data, error } = await supabase
         .from('tincture_batches')
         .select('*, herbs(*)')
@@ -84,6 +92,27 @@ export function useCreateTinctureBatch() {
       notes?: string;
       bulk_inventory_id?: string;
     }): Promise<TinctureBatch> => {
+      if (isMockMode) {
+        const herb = findHerb(input.herb_id);
+        const ordinal = mockBatches.filter((b) => b.herb_id === input.herb_id).length + 1;
+        const created: TinctureBatch = {
+          id: nextId('batch'),
+          user_id: 'mock-user',
+          herb_id: input.herb_id,
+          batch_number: `${(herb?.name ?? 'HRB').slice(0, 3).toUpperCase()}-${new Date().getFullYear()}-${String(ordinal).padStart(2, '0')}`,
+          batch_date: input.batch_date ?? now().split('T')[0],
+          status: 'macerating',
+          pressed_date: null,
+          notes: input.notes ?? null,
+          bulk_inventory_id: input.bulk_inventory_id ?? null,
+          created_at: now(),
+          updated_at: now(),
+          herbs: herb,
+        };
+        mockBatches.unshift(created);
+        return created;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -129,6 +158,27 @@ export function usePressBatch() {
 
   return useMutation({
     mutationFn: async (batchId: string): Promise<void> => {
+      if (isMockMode) {
+        const batch = mockBatches.find((b) => b.id === batchId);
+        if (!batch) throw new Error('Batch not found');
+        batch.status = 'active';
+        batch.pressed_date = now().split('T')[0];
+
+        for (const item of mockInventory) {
+          if (item.herb_id === batch.herb_id && item.location === 'backstock') {
+            item.current_batch_id = batchId;
+          }
+        }
+
+        const active = mockBatches
+          .filter((b) => b.herb_id === batch.herb_id && b.status === 'active')
+          .sort((a, b) => (a.pressed_date ?? '').localeCompare(b.pressed_date ?? ''));
+        if (active.length > 2) {
+          for (const b of active.slice(0, active.length - 2)) b.status = 'archived';
+        }
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -187,6 +237,15 @@ export function useArchiveBatch() {
 
   return useMutation({
     mutationFn: async (batchId: string): Promise<void> => {
+      if (isMockMode) {
+        const batch = mockBatches.find((b) => b.id === batchId);
+        if (batch) batch.status = 'archived';
+        for (const item of mockInventory) {
+          if (item.current_batch_id === batchId) item.current_batch_id = null;
+        }
+        return;
+      }
+
       const { error } = await supabase
         .from('tincture_batches')
         .update({ status: 'archived' })
@@ -211,20 +270,25 @@ export function useGetBatchesForFormula() {
     mutationFn: async (
       herbNames: string[]
     ): Promise<Array<{ herbName: string; batch: TinctureBatch | null }>> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       const normalized = herbNames.map(n => n.toLowerCase().trim());
 
-      // Fetch all active batches with herb names in one query
-      const { data, error } = await supabase
-        .from('tincture_batches')
-        .select('*, herbs(*)')
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-      if (error) throw error;
+      let batches: TinctureBatch[];
+      if (isMockMode) {
+        batches = mockBatches.filter((b) => b.status === 'active');
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
 
-      const batches = data as TinctureBatch[];
+        // Fetch all active batches with herb names in one query
+        const { data, error } = await supabase
+          .from('tincture_batches')
+          .select('*, herbs(*)')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+        if (error) throw error;
+
+        batches = data as TinctureBatch[];
+      }
 
       // Build lookup by any name variant (name, common_name, latin_name, pinyin_name)
       const batchByName = new Map<string, TinctureBatch>();

@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getHerbSuggestions, scanForHerbs, buildExtraNamesFromHerbs } from '@/lib/herbCorrection';
 import { supabase } from '@/integrations/supabase/client';
+import { isMockMode } from '@/lib/mockMode';
+import { findInventoryByHerbNameAndLocation } from '@/lib/mockData';
 
 type CommandType = 'add' | 'remove' | 'change';
 
@@ -207,12 +209,21 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
     const notFound: string[] = [];
     
     for (const herbName of herbNames) {
+      if (isMockMode) {
+        if (findInventoryByHerbNameAndLocation(herbName, location)) {
+          found.push(herbName);
+        } else {
+          notFound.push(herbName);
+        }
+        continue;
+      }
+
       const { data: inventoryItems } = await supabase
         .from('inventory')
         .select('id, herbs!inner(name)')
         .eq('location', location)
         .ilike('herbs.name', herbName);
-      
+
       if (inventoryItems && inventoryItems.length > 0) {
         found.push(herbName);
       } else {

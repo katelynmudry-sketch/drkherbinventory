@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
+import { isMockMode } from '@/lib/mockMode';
+import { findHerb, findHerbByName, findInventoryByHerbNameAndLocation, mockHerbs, mockInventory, nextId, now } from '@/lib/mockData';
 
 export type InventoryLocation = 'backstock' | 'tincture' | 'clinic' | 'bulk' | 'bulk_backstock';
 export type InventoryStatus = 'full' | 'low' | 'out' | 'ordered';
@@ -46,6 +48,8 @@ export function useHerbs() {
   return useQuery({
     queryKey: ['herbs'],
     queryFn: async () => {
+      if (isMockMode) return [...mockHerbs].sort((a, b) => a.name.localeCompare(b.name));
+
       const { data, error } = await supabase
         .from('herbs')
         .select('*')
@@ -62,15 +66,20 @@ export function useInventory(location?: InventoryLocation) {
   const query = useQuery({
     queryKey: ['inventory', location],
     queryFn: async () => {
+      if (isMockMode) {
+        const items = location ? mockInventory.filter((i) => i.location === location) : mockInventory;
+        return [...items].sort((a, b) => b.created_at.localeCompare(a.created_at));
+      }
+
       let q = supabase
         .from('inventory')
         .select('*, herbs(*)')
         .order('created_at', { ascending: false });
-      
+
       if (location) {
         q = q.eq('location', location);
       }
-      
+
       const { data, error } = await q;
       if (error) throw error;
       return data as InventoryItem[];
@@ -79,6 +88,8 @@ export function useInventory(location?: InventoryLocation) {
 
   // Subscribe to realtime updates (channel name is unique per location to avoid conflicts)
   useEffect(() => {
+    if (isMockMode) return;
+
     const channel = supabase
       .channel(`inventory-changes-${location ?? 'all'}`)
       .on(
@@ -111,9 +122,27 @@ export function useAddHerb() {
   
   return useMutation({
     mutationFn: async (herb: { name: string; common_name?: string; latin_name?: string; pinyin_name?: string; preferred_name?: 'common' | 'latin' | 'pinyin'; low_threshold_lb?: number; notes?: string }) => {
+      if (isMockMode) {
+        const created: Herb = {
+          id: nextId('herb'),
+          user_id: 'mock-user',
+          name: herb.name,
+          common_name: herb.common_name ?? null,
+          latin_name: herb.latin_name ?? null,
+          pinyin_name: herb.pinyin_name ?? null,
+          preferred_name: herb.preferred_name ?? null,
+          low_threshold_lb: herb.low_threshold_lb ?? 2,
+          notes: herb.notes ?? null,
+          created_at: now(),
+          updated_at: now(),
+        };
+        mockHerbs.push(created);
+        return created;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      
+
       const { data, error } = await supabase
         .from('herbs')
         .insert({ ...herb, user_id: user.id })
@@ -133,6 +162,20 @@ export function useUpdateHerb() {
 
   return useMutation({
     mutationFn: async ({ id, name, common_name, latin_name, pinyin_name, preferred_name, low_threshold_lb, notes }: { id: string; name?: string; common_name?: string | null; latin_name?: string | null; pinyin_name?: string | null; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string | null }) => {
+      if (isMockMode) {
+        const herb = findHerb(id);
+        if (!herb) throw new Error('Herb not found');
+        if (name !== undefined) herb.name = name;
+        if (common_name !== undefined) herb.common_name = common_name;
+        if (latin_name !== undefined) herb.latin_name = latin_name;
+        if (pinyin_name !== undefined) herb.pinyin_name = pinyin_name;
+        if (preferred_name !== undefined) herb.preferred_name = preferred_name;
+        if (low_threshold_lb !== undefined) herb.low_threshold_lb = low_threshold_lb;
+        if (notes !== undefined) herb.notes = notes;
+        herb.updated_at = now();
+        return herb;
+      }
+
       // Build payload with only defined fields; coerce types to match DB expectations
       const payload: Record<string, unknown> = {};
       if (name !== undefined) payload.name = name;
@@ -179,6 +222,27 @@ export function useAddInventory() {
       status?: InventoryStatus;
       notes?: string;
     }) => {
+      if (isMockMode) {
+        const herb = findHerb(item.herb_id);
+        const created: InventoryItem = {
+          id: nextId('inv'),
+          user_id: 'mock-user',
+          herb_id: item.herb_id,
+          location: item.location,
+          quantity: item.quantity ?? 0,
+          status: item.status ?? 'full',
+          tincture_started_at: item.location === 'tincture' ? now() : null,
+          tincture_ready_at: item.location === 'tincture' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : null,
+          current_batch_id: null,
+          notes: item.notes ?? null,
+          created_at: now(),
+          updated_at: now(),
+          herbs: herb,
+        };
+        mockInventory.unshift(created);
+        return created;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -227,6 +291,18 @@ export function useUpdateInventory() {
 
   return useMutation({
     mutationFn: async ({ id, status, quantity, notes, tincture_started_at, tincture_ready_at }: Partial<InventoryItem> & { id: string }) => {
+      if (isMockMode) {
+        const item = mockInventory.find((i) => i.id === id);
+        if (!item) throw new Error('Inventory item not found');
+        if (status !== undefined) item.status = status;
+        if (quantity !== undefined) item.quantity = quantity;
+        if (notes !== undefined) item.notes = notes;
+        if (tincture_started_at !== undefined) item.tincture_started_at = tincture_started_at;
+        if (tincture_ready_at !== undefined) item.tincture_ready_at = tincture_ready_at;
+        item.updated_at = now();
+        return item;
+      }
+
       // Only send writable columns — never send herbs join, user_id, created_at, updated_at
       const payload: Record<string, unknown> = {};
       if (status !== undefined) payload.status = status;
@@ -255,6 +331,12 @@ export function useDeleteInventory() {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      if (isMockMode) {
+        const index = mockInventory.findIndex((i) => i.id === id);
+        if (index !== -1) mockInventory.splice(index, 1);
+        return;
+      }
+
       const { error } = await supabase
         .from('inventory')
         .delete()
@@ -278,6 +360,51 @@ export function useBulkUpsert() {
       status: InventoryStatus;
       herbId?: string;          // set if herb already exists in herbs table
     }>) => {
+      if (isMockMode) {
+        for (const entry of entries) {
+          let herb = entry.herbId ? findHerb(entry.herbId) : findHerbByName(entry.herbName);
+          if (!herb) {
+            herb = {
+              id: nextId('herb'),
+              user_id: 'mock-user',
+              name: entry.herbName,
+              common_name: null,
+              latin_name: null,
+              pinyin_name: null,
+              preferred_name: null,
+              low_threshold_lb: 2,
+              notes: null,
+              created_at: now(),
+              updated_at: now(),
+            };
+            mockHerbs.push(herb);
+          }
+          const existing = mockInventory.find((i) => i.herb_id === herb!.id && i.location === 'bulk');
+          if (existing) {
+            existing.quantity = entry.quantity;
+            existing.status = entry.status;
+            existing.updated_at = now();
+          } else {
+            mockInventory.unshift({
+              id: nextId('inv'),
+              user_id: 'mock-user',
+              herb_id: herb.id,
+              location: 'bulk',
+              quantity: entry.quantity,
+              status: entry.status,
+              tincture_started_at: null,
+              tincture_ready_at: null,
+              current_batch_id: null,
+              notes: null,
+              created_at: now(),
+              updated_at: now(),
+              herbs: herb,
+            });
+          }
+        }
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -338,6 +465,15 @@ export function useBulkUpsert() {
 export function useSearchInventory() {
   return useMutation({
     mutationFn: async (searchTerm: string) => {
+      if (isMockMode) {
+        const term = searchTerm.toLowerCase();
+        return mockInventory.filter((item) =>
+          [item.herbs?.name, item.herbs?.common_name, item.herbs?.latin_name, item.herbs?.pinyin_name].some((n) =>
+            n?.toLowerCase().includes(term)
+          )
+        );
+      }
+
       const { data, error } = await supabase
         .from('inventory')
         .select('*, herbs!inner(*)')
@@ -353,6 +489,14 @@ export function useRemoveInventoryByHerbName() {
   
   return useMutation({
     mutationFn: async ({ herbName, location }: { herbName: string; location: InventoryLocation }) => {
+      if (isMockMode) {
+        const item = findInventoryByHerbNameAndLocation(herbName, location);
+        if (!item) throw new Error(`${herbName} not found in ${location}`);
+        const index = mockInventory.findIndex((i) => i.id === item.id);
+        mockInventory.splice(index, 1);
+        return { herbName, location };
+      }
+
       // First find the inventory item by herb name and location
       const { data: inventoryItems, error: findError } = await supabase
         .from('inventory')
@@ -385,6 +529,14 @@ export function useUpdateInventoryByHerbName() {
 
   return useMutation({
     mutationFn: async ({ herbName, location, status }: { herbName: string; location: InventoryLocation; status: InventoryStatus }) => {
+      if (isMockMode) {
+        const item = findInventoryByHerbNameAndLocation(herbName, location);
+        if (!item) throw new Error(`${herbName} not found in ${location}`);
+        item.status = status;
+        item.updated_at = now();
+        return { herbName, location, status, data: item };
+      }
+
       // First find the inventory item by herb name and location
       const { data: inventoryItems, error: findError } = await supabase
         .from('inventory')
@@ -420,6 +572,12 @@ export function useUpdateLowThreshold() {
 
   return useMutation({
     mutationFn: async ({ herbId, low_threshold_lb }: { herbId: string; low_threshold_lb: number }) => {
+      if (isMockMode) {
+        const herb = findHerb(herbId);
+        if (herb) herb.low_threshold_lb = low_threshold_lb;
+        return;
+      }
+
       const { error } = await supabase
         .from('herbs')
         .update({ low_threshold_lb })
@@ -440,6 +598,32 @@ export function useSetInventoryStatusForHerb() {
 
   return useMutation({
     mutationFn: async ({ herb_id, location, status, notes }: { herb_id: string; location: InventoryLocation; status: InventoryStatus; notes?: string | null }) => {
+      if (isMockMode) {
+        const existing = mockInventory.find((i) => i.herb_id === herb_id && i.location === location);
+        if (existing) {
+          existing.status = status;
+          if (notes !== undefined) existing.notes = notes ?? null;
+          existing.updated_at = now();
+        } else {
+          mockInventory.unshift({
+            id: nextId('inv'),
+            user_id: 'mock-user',
+            herb_id,
+            location,
+            quantity: 0,
+            status,
+            tincture_started_at: null,
+            tincture_ready_at: null,
+            current_batch_id: null,
+            notes: notes ?? null,
+            created_at: now(),
+            updated_at: now(),
+            herbs: findHerb(herb_id),
+          });
+        }
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -487,6 +671,14 @@ export function useMarkAsOrdered() {
 
   return useMutation({
     mutationFn: async (inventoryIds: string[]) => {
+      if (isMockMode) {
+        for (const id of inventoryIds) {
+          const item = mockInventory.find((i) => i.id === id);
+          if (item) { item.status = 'ordered'; item.updated_at = now(); }
+        }
+        return;
+      }
+
       const { error } = await supabase
         .from('inventory')
         .update({ status: 'ordered' })
@@ -505,16 +697,23 @@ export function useUnmarkOrdered() {
 
   return useMutation({
     mutationFn: async (items: Array<{ id: string; quantity: number; low_threshold_lb: number }>) => {
-      await Promise.all(items.map(async ({ id, quantity, low_threshold_lb }) => {
+      for (const { id, quantity, low_threshold_lb } of items) {
         const qty = Number(quantity);
         const threshold = Number(low_threshold_lb);
         const status: InventoryStatus = qty <= 0 ? 'out' : qty <= threshold ? 'low' : 'full';
+
+        if (isMockMode) {
+          const item = mockInventory.find((i) => i.id === id);
+          if (item) { item.status = status; item.updated_at = now(); }
+          continue;
+        }
+
         const { error } = await supabase
           .from('inventory')
           .update({ status })
           .eq('id', id);
         if (error) throw error;
-      }));
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });

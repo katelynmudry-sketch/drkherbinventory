@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isMockMode } from '@/lib/mockMode';
+import { mockWorkspaceConfig, setMockWorkspaceConfig } from '@/lib/mockData';
 import {
   WorkspaceConfig,
   LocationConfig,
@@ -24,6 +26,8 @@ export function useWorkspaceConfig() {
   return useQuery({
     queryKey: ['workspace_config'],
     queryFn: async (): Promise<WorkspaceConfig> => {
+      if (isMockMode) return mockWorkspaceConfig;
+
       const { data, error } = await supabase
         .from('workspace_config')
         .select('*')
@@ -51,6 +55,11 @@ export function useUpdateWorkspaceConfig() {
 
   return useMutation({
     mutationFn: async (config: WorkspaceConfig) => {
+      if (isMockMode) {
+        setMockWorkspaceConfig(config);
+        return config;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
