@@ -28,7 +28,7 @@ import {
   InventoryItem,
   getDisplayName,
 } from '@/hooks/useInventory';
-import { usePressBatch } from '@/hooks/useTinctureBatches';
+import { usePressBatch, useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
@@ -42,18 +42,33 @@ interface InventorySectionProps {
   icon: React.ReactNode;
   description: string;
   searchQuery?: string;
+  showBatchInfo?: boolean;
 }
 
-export function InventorySection({ location, title, icon, description, searchQuery = '' }: InventorySectionProps) {
+export function InventorySection({ location, title, icon, description, searchQuery = '', showBatchInfo = false }: InventorySectionProps) {
   const { data: inventory = [], isLoading } = useInventory(location);
   const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: herbs = [] } = useHerbs();
+  const { data: tinctureBatches = [] } = useTinctureBatches();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const pressBatch = usePressBatch();
   const setInventoryStatus = useSetInventoryStatusForHerb();
+
+  // Maps for batch badge lookup (only used when showBatchInfo is on)
+  const { activeBatchByHerbId, maceratingBatchByHerbId, batchById } = useMemo(() => {
+    const active = new Map<string, TinctureBatch>();
+    const macerating = new Map<string, TinctureBatch>();
+    const byId = new Map<string, TinctureBatch>();
+    for (const batch of tinctureBatches) {
+      byId.set(batch.id, batch);
+      if (batch.status === 'active') active.set(batch.herb_id, batch);
+      if (batch.status === 'macerating') macerating.set(batch.herb_id, batch);
+    }
+    return { activeBatchByHerbId: active, maceratingBatchByHerbId: macerating, batchById: byId };
+  }, [tinctureBatches]);
 
   // herb_ids AND display names that have usable (non-out) backstock
   const { backstockHerbIds, backstockNames } = useMemo(() => {
@@ -445,6 +460,13 @@ export function InventorySection({ location, title, icon, description, searchQue
             <InventoryItemRow
               key={item.id}
               item={item}
+              batch={
+                !showBatchInfo
+                  ? null
+                  : location === 'tincture'
+                  ? maceratingBatchByHerbId.get(item.herb_id) ?? null
+                  : (item.current_batch_id ? batchById.get(item.current_batch_id) : null) ?? activeBatchByHerbId.get(item.herb_id) ?? null
+              }
               hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
               isEditing={editingId === item.id}
               editStatus={editStatus}
@@ -532,6 +554,7 @@ export function InventorySection({ location, title, icon, description, searchQue
 
 interface InventoryItemRowProps {
   item: InventoryItem;
+  batch?: TinctureBatch | null;
   hasBackstock?: boolean;
   isEditing: boolean;
   editStatus: InventoryStatus;
@@ -552,6 +575,7 @@ interface InventoryItemRowProps {
 
 function InventoryItemRow({
   item,
+  batch = null,
   hasBackstock = false,
   isEditing,
   editStatus,
@@ -607,6 +631,11 @@ function InventoryItemRow({
                   <p className="text-xs text-muted-foreground truncate">{alts.join(' · ')}</p>
                 ) : null;
               })()}
+              {batch && (
+                <p className="text-xs font-mono text-muted-foreground/80 truncate leading-tight">
+                  Batch {batch.batch_number}
+                </p>
+              )}
             </>
           )}
           {(location === 'tincture' || location === 'clinic') && !isEditing && (() => {

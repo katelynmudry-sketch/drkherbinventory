@@ -60,6 +60,7 @@ export type Database = {
         Row: {
           created_at: string
           current_batch_id: string | null
+          current_bulk_batch_id: string | null
           herb_id: string
           id: string
           location: string
@@ -74,6 +75,7 @@ export type Database = {
         Insert: {
           created_at?: string
           current_batch_id?: string | null
+          current_bulk_batch_id?: string | null
           herb_id: string
           id?: string
           location: string
@@ -88,6 +90,7 @@ export type Database = {
         Update: {
           created_at?: string
           current_batch_id?: string | null
+          current_bulk_batch_id?: string | null
           herb_id?: string
           id?: string
           location?: string
@@ -114,6 +117,57 @@ export type Database = {
             referencedRelation: "tincture_batches"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "inventory_current_bulk_batch_id_fkey"
+            columns: ["current_bulk_batch_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bulk_batches: {
+        Row: {
+          id: string
+          user_id: string
+          herb_id: string
+          batch_number: string
+          received_date: string
+          status: 'available' | 'depleted'
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          herb_id: string
+          batch_number: string
+          received_date?: string
+          status?: 'available' | 'depleted'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          herb_id?: string
+          batch_number?: string
+          received_date?: string
+          status?: 'available' | 'depleted'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_batches_herb_id_fkey"
+            columns: ["herb_id"]
+            isOneToOne: false
+            referencedRelation: "herbs"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tincture_batches: {
@@ -127,6 +181,7 @@ export type Database = {
           pressed_date: string | null
           notes: string | null
           bulk_inventory_id: string | null
+          bulk_batch_id: string | null
           created_at: string
           updated_at: string
         }
@@ -140,6 +195,7 @@ export type Database = {
           pressed_date?: string | null
           notes?: string | null
           bulk_inventory_id?: string | null
+          bulk_batch_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -153,6 +209,7 @@ export type Database = {
           pressed_date?: string | null
           notes?: string | null
           bulk_inventory_id?: string | null
+          bulk_batch_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -169,6 +226,13 @@ export type Database = {
             columns: ["bulk_inventory_id"]
             isOneToOne: false
             referencedRelation: "inventory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tincture_batches_bulk_batch_id_fkey"
+            columns: ["bulk_batch_id"]
+            isOneToOne: false
+            referencedRelation: "bulk_batches"
             referencedColumns: ["id"]
           },
         ]
@@ -292,6 +356,14 @@ export type Database = {
     }
     Functions: {
       generate_batch_number: {
+        Args: {
+          p_herb_id: string
+          p_user_id: string
+          p_year?: number
+        }
+        Returns: string
+      }
+      generate_bulk_batch_number: {
         Args: {
           p_herb_id: string
           p_user_id: string

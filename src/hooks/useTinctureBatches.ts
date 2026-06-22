@@ -12,9 +12,11 @@ export interface TinctureBatch {
   pressed_date: string | null;
   notes: string | null;
   bulk_inventory_id: string | null;
+  bulk_batch_id: string | null;
   created_at: string;
   updated_at: string;
   herbs?: Herb;
+  bulk_batches?: { id: string; batch_number: string; received_date: string } | null;
 }
 
 // Fetch all batches (active + archived) for the current user
@@ -24,7 +26,7 @@ export function useTinctureBatches() {
     queryFn: async (): Promise<TinctureBatch[]> => {
       const { data, error } = await supabase
         .from('tincture_batches')
-        .select('*, herbs(*)')
+        .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
         .order('batch_date', { ascending: false });
       if (error) throw error;
       return data as TinctureBatch[];
@@ -41,7 +43,7 @@ export function useCurrentBatch(herbId: string | undefined) {
       if (!herbId) return null;
       const { data, error } = await supabase
         .from('tincture_batches')
-        .select('*, herbs(*)')
+        .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
         .eq('herb_id', herbId)
         .eq('status', 'active')
         .maybeSingle();
@@ -60,7 +62,7 @@ export function useMaceratingBatch(herbId: string | undefined) {
       if (!herbId) return null;
       const { data, error } = await supabase
         .from('tincture_batches')
-        .select('*, herbs(*)')
+        .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
         .eq('herb_id', herbId)
         .eq('status', 'macerating')
         .maybeSingle();
@@ -95,7 +97,18 @@ export function useCreateTinctureBatch() {
         });
       if (fnError) throw fnError;
 
-      // 2. Insert new batch as 'macerating' (not yet pressed)
+      // 2. Find the herb's current available bulk lot — that lot is the
+      // source for this tincture batch (most-recent-arrival convention,
+      // same as how pressing tags backstock with the most recent batch).
+      const { data: bulkLot } = await supabase
+        .from('bulk_batches')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('herb_id', input.herb_id)
+        .eq('status', 'available')
+        .maybeSingle();
+
+      // 3. Insert new batch as 'macerating' (not yet pressed)
       const { data, error } = await supabase
         .from('tincture_batches')
         .insert({
@@ -106,16 +119,26 @@ export function useCreateTinctureBatch() {
           status: 'macerating',
           notes: input.notes ?? null,
           bulk_inventory_id: input.bulk_inventory_id ?? null,
+          bulk_batch_id: bulkLot?.id ?? null,
         })
-        .select('*, herbs(*)')
+        .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
         .single();
       if (error) throw error;
+
+      // 4. Consume the bulk lot — it's now used by this tincture batch
+      if (bulkLot) {
+        await supabase
+          .from('bulk_batches')
+          .update({ status: 'depleted' })
+          .eq('id', bulkLot.id);
+      }
 
       return data as TinctureBatch;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['bulk_batches'] });
     },
   });
 }
@@ -219,7 +242,7 @@ export function useGetBatchesForFormula() {
       // Fetch all active batches with herb names in one query
       const { data, error } = await supabase
         .from('tincture_batches')
-        .select('*, herbs(*)')
+        .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
         .eq('user_id', user.id)
         .eq('status', 'active');
       if (error) throw error;
