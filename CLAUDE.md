@@ -66,6 +66,26 @@ Herb name correction uses fuzzy matching (Levenshtein distance) + a 100+ entry s
 - Desktop-optimized layout (not voice-driven)
 - Ability to manually update pricing when placing orders
 
+## Possible Future Work (unscheduled ideas)
+
+Not committed/planned — just candidate ideas to revisit later:
+
+- **Batch/session voice recording**: instead of (or in addition to) the
+  per-command mic button, let a worker record a whole cleaning/production
+  session as one long voice memo and upload the audio (or a transcript)
+  afterward for bulk parsing into multiple inventory actions. Would need a
+  batch speech-to-text step (e.g. AssemblyAI/Deepgram/Whisper) — the browser
+  Web Speech API used today isn't built for long-form/offline audio — then
+  a Claude pass over the full transcript to extract the list of actions
+  (same shape as `voice-assistant`'s `actions`, just one big batch instead
+  of per-utterance). Tradeoff: more room for misparsing/merging unrelated
+  mentions in one long ramble, plus a paid STT bill per upload on top of
+  the Claude API cost. Likely its own feature (upload + batch transcribe +
+  batch parse), not just an extension of `VoiceAssistant.tsx`.
+- **Multi-industry support**: generalizing beyond herbs (terminology,
+  locations/statuses, prompt grounding) to other inventory domains —
+  bigger scope, revisit once the herb-specific flow is proven out.
+
 ## Subscriptions (Stripe)
 
 The entire app is gated behind an active paid subscription — there is no
