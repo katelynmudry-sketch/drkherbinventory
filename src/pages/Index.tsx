@@ -137,7 +137,7 @@ const Index = () => {
           </div>
         </section>
 
-        {batchTrackingMode && <BatchTrackingPanel />}
+        {batchTrackingMode && <BatchTrackingPanel activeTab={activeTab} />}
 
         {/* Tab Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

@@ -6,12 +6,13 @@ import { useBulkBatches } from '@/hooks/useBulkBatches';
 import { getDisplayName } from '@/hooks/useInventory';
 import { cn } from '@/lib/utils';
 
-export function BatchTrackingPanel() {
+export function BatchTrackingPanel({ activeTab }: { activeTab: string }) {
   const { data: tinctureBatches = [], isLoading: loadingTincture } = useTinctureBatches();
   const { data: bulkBatches = [], isLoading: loadingBulk } = useBulkBatches();
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 mb-6">
+    <div className="grid gap-4 mb-6">
+      {activeTab === 'tinctures' && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -47,7 +48,9 @@ export function BatchTrackingPanel() {
           )}
         </CardContent>
       </Card>
+      )}
 
+      {activeTab === 'bulk' && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -81,6 +84,7 @@ export function BatchTrackingPanel() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
