@@ -5,6 +5,12 @@
 -- Mirrors the tincture_batches pattern (20260313_tincture_batches.sql).
 -- ============================================================
 
+-- Safe to re-run: undo any partial application before recreating.
+ALTER TABLE IF EXISTS public.tincture_batches DROP COLUMN IF EXISTS bulk_batch_id;
+ALTER TABLE IF EXISTS public.inventory DROP COLUMN IF EXISTS current_bulk_batch_id;
+DROP FUNCTION IF EXISTS public.generate_bulk_batch_number(UUID, UUID, INTEGER);
+DROP TABLE IF EXISTS public.bulk_batches CASCADE;
+
 CREATE TABLE public.bulk_batches (
   id            UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id       UUID NOT NULL,
@@ -79,14 +85,15 @@ BEGIN
   -- Abbreviation: first 3 chars of herb name, uppercased
   v_abbrev := upper(left(trim(v_herb_name), 3));
 
-  -- Count existing bulk lots for this herb+year to get next sequence number
+  -- Count existing bulk lots sharing this abbreviation+year (not just this
+  -- herb_id) since batch_number is unique per user regardless of herb, and
+  -- different herbs can share the same 3-letter abbreviation.
   SELECT COALESCE(MAX(
     CAST(split_part(batch_number, '-', 4) AS INTEGER)
   ), 0) + 1
   INTO v_seq
   FROM public.bulk_batches
   WHERE user_id = p_user_id
-    AND herb_id = p_herb_id
     AND batch_number LIKE (v_abbrev || '-BLK-' || p_year::TEXT || '-%');
 
   RETURN v_abbrev || '-BLK-' || p_year::TEXT || '-' || lpad(v_seq::TEXT, 3, '0');
