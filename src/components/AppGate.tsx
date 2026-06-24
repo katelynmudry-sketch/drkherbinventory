@@ -1,9 +1,7 @@
 import { ReactNode } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuthForm } from '@/components/AuthForm';
-import { Paywall } from '@/components/Paywall';
 import { useAuth } from '@/hooks/useAuth';
-import { useSubscription } from '@/hooks/useSubscription';
 
 function LoadingScreen() {
   return (
@@ -16,11 +14,12 @@ function LoadingScreen() {
   );
 }
 
-// Central gate for the whole app: requires sign-in AND an active
-// subscription (Basic or Pro) before rendering any routed page.
+// Central gate for the whole app: requires sign-in before rendering any
+// routed page. Subscription gating (Paywall/useSubscription) is wired up
+// but disabled for now during personal-account testing — re-enable the
+// isActive check below before going public.
 export function AppGate({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
-  const { data: subscription, isLoading: subLoading } = useSubscription();
 
   if (authLoading) {
     return <LoadingScreen />;
@@ -28,14 +27,6 @@ export function AppGate({ children }: { children: ReactNode }) {
 
   if (!user) {
     return <AuthForm />;
-  }
-
-  if (subLoading) {
-    return <LoadingScreen />;
-  }
-
-  if (!subscription?.isActive) {
-    return <Paywall />;
   }
 
   return <>{children}</>;

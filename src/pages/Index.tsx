@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart, CreditCard, Loader2, Sparkles } from 'lucide-react';
+import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart, CreditCard, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { VoiceQuery } from '@/components/VoiceQuery';
@@ -15,15 +14,13 @@ import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { DuplicateHerbsReview } from '@/components/DuplicateHerbsReview';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventory } from '@/hooks/useInventory';
-import { useSubscription, useStripeCheckout, useStripePortal } from '@/hooks/useSubscription';
+import { useStripePortal } from '@/hooks/useSubscription';
 import { toast } from 'sonner';
 
 const Index = () => {
   const { signOut } = useAuth();
   const { data: allInventory = [] } = useInventory();
-  const { data: subscription } = useSubscription();
   const stripePortal = useStripePortal();
-  const stripeCheckout = useStripeCheckout();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('tinctures');
 
@@ -117,28 +114,7 @@ const Index = () => {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <VoiceQuery activeTab={activeTab} />
             <VoiceHerbAdd activeTab={activeTab} />
-            {subscription?.hasAI ? (
-              <VoiceAssistant activeTab={activeTab} />
-            ) : (
-              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-                <CardContent className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                  <Sparkles className="h-6 w-6 text-primary" />
-                  <div>
-                    <p className="font-medium">AI Voice Assistant</p>
-                    <p className="text-sm text-muted-foreground">
-                      Upgrade to Pro for natural, conversational voice commands.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => stripeCheckout.mutate('pro')}
-                    disabled={stripeCheckout.isPending}
-                  >
-                    {stripeCheckout.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Upgrade to Pro'}
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+            <VoiceAssistant activeTab={activeTab} />
           </div>
         </section>
 
