@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Dialog,
@@ -21,12 +22,13 @@ import {
   useUpdateInventory,
   useDeleteInventory,
   useUpdateHerb,
+  useSetInventoryStatusForHerb,
   InventoryLocation,
   InventoryStatus,
   InventoryItem,
   getDisplayName,
 } from '@/hooks/useInventory';
-import { usePressBatch } from '@/hooks/useTinctureBatches';
+import { usePressBatch, useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
@@ -40,17 +42,33 @@ interface InventorySectionProps {
   icon: React.ReactNode;
   description: string;
   searchQuery?: string;
+  showBatchInfo?: boolean;
 }
 
-export function InventorySection({ location, title, icon, description, searchQuery = '' }: InventorySectionProps) {
+export function InventorySection({ location, title, icon, description, searchQuery = '', showBatchInfo = false }: InventorySectionProps) {
   const { data: inventory = [], isLoading } = useInventory(location);
   const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: herbs = [] } = useHerbs();
+  const { data: tinctureBatches = [] } = useTinctureBatches();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const pressBatch = usePressBatch();
+  const setInventoryStatus = useSetInventoryStatusForHerb();
+
+  // Maps for batch badge lookup (only used when showBatchInfo is on)
+  const { activeBatchByHerbId, maceratingBatchByHerbId, batchById } = useMemo(() => {
+    const active = new Map<string, TinctureBatch>();
+    const macerating = new Map<string, TinctureBatch>();
+    const byId = new Map<string, TinctureBatch>();
+    for (const batch of tinctureBatches) {
+      byId.set(batch.id, batch);
+      if (batch.status === 'active') active.set(batch.herb_id, batch);
+      if (batch.status === 'macerating') macerating.set(batch.herb_id, batch);
+    }
+    return { activeBatchByHerbId: active, maceratingBatchByHerbId: macerating, batchById: byId };
+  }, [tinctureBatches]);
 
   // herb_ids AND display names that have usable (non-out) backstock
   const { backstockHerbIds, backstockNames } = useMemo(() => {
@@ -66,7 +84,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (item.herbs) {
       const name = getDisplayName(item.herbs).toLowerCase().trim();
       if (backstockNames.has(name)) return true;
-      // partial match � e.g. "bupleurum" in backstock names that start with it
+      // partial match � e.g. "bupleurum" in backstock names that start with it
       for (const n of backstockNames) {
         if (n.startsWith(name) || name.startsWith(n)) return true;
         // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
@@ -90,6 +108,10 @@ export function InventorySection({ location, title, icon, description, searchQue
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityInfo[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [pressItem, setPressItem] = useState<InventoryItem | null>(null);
+  const [pressAlsoClinic, setPressAlsoClinic] = useState(false);
+  const [pressAlsoBackstock, setPressAlsoBackstock] = useState(false);
+  const [pressBackstockSize, setPressBackstockSize] = useState('');
 
   // Status priority for sorting (out first, then low, then full)
   const statusPriority: Record<InventoryStatus, number> = { out: 0, low: 1, full: 2 };
@@ -171,17 +193,46 @@ export function InventorySection({ location, title, icon, description, searchQue
     setEditingId(null);
   };
 
-  // PRESSED: batch moves to active, inventory row is deleted (tincture is done macerating)
-  const handlePress = async (item: InventoryItem) => {
+  // PRESSED: opens a confirmation dialog before moving the herb to Clinic and/or Backstock
+  const handlePress = (item: InventoryItem) => {
+    setPressAlsoClinic(true);
+    setPressAlsoBackstock(false);
+    setPressBackstockSize('');
+    setPressItem(item);
+  };
+
+  // Confirmed press: batch moves to active, the tincture inventory row is
+  // deleted (tincture is done macerating), and — only if explicitly checked —
+  // the herb is added/updated in Clinic as 'full' (replacing any low/out
+  // status) and/or added to Backstock
+  const handleConfirmPress = async () => {
+    const item = pressItem;
+    if (!item) return;
     try {
       if (item.current_batch_id) {
         await pressBatch.mutateAsync(item.current_batch_id);
       }
+      const destinations: string[] = [];
+      if (pressAlsoClinic) {
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
+        destinations.push('Clinic as Full');
+      }
+      if (pressAlsoBackstock) {
+        const size = pressBackstockSize && pressBackstockSize !== 'untagged' ? pressBackstockSize : null;
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size });
+        destinations.push('Backstock');
+      }
       // Remove the tincture inventory row — the batch record is the permanent record now
       await deleteInventory.mutateAsync(item.id);
-      toast.success(`${item.herbs ? getDisplayName(item.herbs) : 'Herb'} pressed — batch recorded`);
+      const herbName = item.herbs ? getDisplayName(item.herbs) : 'Herb';
+      toast.success(`${herbName} pressed${destinations.length ? ` — added to ${destinations.join(' and ')}` : ''}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to press batch');
+    } finally {
+      setPressItem(null);
+      setPressAlsoClinic(false);
+      setPressAlsoBackstock(false);
+      setPressBackstockSize('');
     }
   };
 
@@ -292,13 +343,14 @@ export function InventorySection({ location, title, icon, description, searchQue
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
 
-                  {/* Clinic: Low / Out */}
+                  {/* Clinic: Full / Low / Out */}
                   {location === 'clinic' && (
                     <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as InventoryStatus)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="full">Full</SelectItem>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="out">Out</SelectItem>
                       </SelectContent>
@@ -408,6 +460,13 @@ export function InventorySection({ location, title, icon, description, searchQue
             <InventoryItemRow
               key={item.id}
               item={item}
+              batch={
+                !showBatchInfo
+                  ? null
+                  : location === 'tincture'
+                  ? maceratingBatchByHerbId.get(item.herb_id) ?? null
+                  : (item.current_batch_id ? batchById.get(item.current_batch_id) : null) ?? activeBatchByHerbId.get(item.herb_id) ?? null
+              }
               hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
               isEditing={editingId === item.id}
               editStatus={editStatus}
@@ -433,12 +492,69 @@ export function InventorySection({ location, title, icon, description, searchQue
           ))
         )}
       </CardContent>}
+
+      {/* Press confirmation dialog: lets you choose where the pressed tincture goes */}
+      <Dialog open={!!pressItem} onOpenChange={(open) => { if (!open) { setPressItem(null); setPressAlsoClinic(false); setPressAlsoBackstock(false); setPressBackstockSize(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tincture Pressed</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {pressItem && (
+              <div className="border rounded-md divide-y">
+                <div className="px-3 py-2 text-sm font-medium">
+                  {pressItem.herbs ? getDisplayName(pressItem.herbs) : 'Herb'}
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground">
+              The batch will be recorded. Choose where to send this tincture, if anywhere:
+            </p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={pressAlsoClinic}
+                onCheckedChange={(checked) => setPressAlsoClinic(checked === true)}
+              />
+              Add to Clinic as Full (clears any Low/Out)
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={pressAlsoBackstock}
+                onCheckedChange={(checked) => setPressAlsoBackstock(checked === true)}
+              />
+              Add to Backstock
+            </label>
+            {pressAlsoBackstock && (
+              <Select value={pressBackstockSize} onValueChange={setPressBackstockSize}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Size (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="untagged">Untagged</SelectItem>
+                  <SelectItem value="small">Small</SelectItem>
+                  <SelectItem value="large">Large</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            <Button
+              className="w-full"
+              onClick={handleConfirmPress}
+              disabled={pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending}
+            >
+              {pressBatch.isPending || setInventoryStatus.isPending || deleteInventory.isPending
+                ? 'Saving...'
+                : 'Confirm'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
 
 interface InventoryItemRowProps {
   item: InventoryItem;
+  batch?: TinctureBatch | null;
   hasBackstock?: boolean;
   isEditing: boolean;
   editStatus: InventoryStatus;
@@ -459,6 +575,7 @@ interface InventoryItemRowProps {
 
 function InventoryItemRow({
   item,
+  batch = null,
   hasBackstock = false,
   isEditing,
   editStatus,
@@ -514,6 +631,11 @@ function InventoryItemRow({
                   <p className="text-xs text-muted-foreground truncate">{alts.join(' · ')}</p>
                 ) : null;
               })()}
+              {batch && (
+                <p className="text-xs font-mono text-muted-foreground/80 truncate leading-tight">
+                  Batch {batch.batch_number}
+                </p>
+              )}
             </>
           )}
           {(location === 'tincture' || location === 'clinic') && !isEditing && (() => {
@@ -540,13 +662,14 @@ function InventoryItemRow({
         <div className="flex items-center gap-2 shrink-0">
           {isEditing ? (
             <>
-              {/* Clinic: Low / Out only */}
+              {/* Clinic: Full / Low / Out */}
               {location === 'clinic' && (
                 <Select value={editStatus} onValueChange={(v) => onStatusChange(v as InventoryStatus)}>
                   <SelectTrigger className="w-24 h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="full">Full</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="out">Out</SelectItem>
                   </SelectContent>

@@ -40,6 +40,7 @@ import {
   Herb,
   InventoryItem,
 } from '@/hooks/useInventory';
+import { useBulkBatches, useReceiveBulkBatch, BulkBatch } from '@/hooks/useBulkBatches';
 import { HERB_LIST } from '@/lib/herbCorrection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -65,15 +66,30 @@ function calcBulkStatus(qty: number, lowThreshold: number): 'out' | 'low' | 'ful
   return 'full';
 }
 
-export function BulkInventorySection() {
+interface BulkInventorySectionProps {
+  showBatchInfo?: boolean;
+}
+
+export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySectionProps = {}) {
   const { data: inventory = [], isLoading } = useInventory('bulk');
   const { data: backstockInventory = [] } = useInventory('bulk_backstock');
   const { data: herbs = [] } = useHerbs();
+  const { data: bulkBatches = [] } = useBulkBatches();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const addHerb = useAddHerb();
+  const receiveBulkBatch = useReceiveBulkBatch();
+
+  // herb_id -> current available lot, for the batch-tracking badge
+  const currentLotByHerbId = useMemo(() => {
+    const map = new Map<string, BulkBatch>();
+    for (const lot of bulkBatches) {
+      if (lot.status === 'available') map.set(lot.herb_id, lot);
+    }
+    return map;
+  }, [bulkBatches]);
 
   const [stockCountMode, setStockCountMode] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -140,6 +156,10 @@ export function BulkInventorySection() {
           notes: selectedNotes || undefined,
         });
       }
+
+      // Record this arrival as a new bulk lot — it becomes the source for
+      // the next tincture batch started for this herb.
+      await receiveBulkBatch.mutateAsync({ herb_id: resolvedHerbId });
 
       // Handle backstock
       if (selectedBackstockQty !== null) {
@@ -547,6 +567,7 @@ export function BulkInventorySection() {
                 key={item.id}
                 item={item}
                 backstockQty={backstock?.quantity != null ? Number(backstock.quantity) : null}
+                lot={showBatchInfo ? currentLotByHerbId.get(item.herb_id) ?? null : null}
                 isEditing={editingId === item.id}
                 editQuantity={editQuantity}
                 editBackstockQty={editBackstockQty}
@@ -593,6 +614,7 @@ export function BulkInventorySection() {
 interface BulkItemCardProps {
   item: InventoryItem;
   backstockQty: number | null;
+  lot?: BulkBatch | null;
   isEditing: boolean;
   editQuantity: number;
   editBackstockQty: number | null;
@@ -621,6 +643,7 @@ interface BulkItemCardProps {
 function BulkItemCard({
   item,
   backstockQty,
+  lot,
   isEditing,
   editQuantity,
   editBackstockQty,
@@ -808,6 +831,11 @@ function BulkItemCard({
                     <p className="text-sm font-medium truncate leading-tight">{display}</p>
                     {alts.length > 0 && (
                       <p className="text-xs text-muted-foreground truncate leading-tight">{alts.join(' · ')}</p>
+                    )}
+                    {lot && (
+                      <p className="text-xs font-mono text-muted-foreground/80 truncate leading-tight">
+                        Lot {lot.batch_number}
+                      </p>
                     )}
                   </>
                 );

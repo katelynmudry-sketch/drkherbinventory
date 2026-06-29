@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart } from 'lucide-react';
+import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Toggle } from '@/components/ui/toggle';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { VoiceQuery } from '@/components/VoiceQuery';
 import { VoiceHerbAdd } from '@/components/VoiceHerbAdd';
 import { InventorySection } from '@/components/InventorySection';
 import { BulkInventorySection } from '@/components/BulkInventorySection';
 import { TinctureRestockPanel } from '@/components/TinctureRestockPanel';
+import { BatchTrackingPanel } from '@/components/BatchTrackingPanel';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { DuplicateHerbsReview } from '@/components/DuplicateHerbsReview';
 import { AuthForm } from '@/components/AuthForm';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventory } from '@/hooks/useInventory';
+import { useBatchTrackingMode } from '@/hooks/useBatchTrackingMode';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
@@ -22,6 +25,7 @@ const Index = () => {
   const { data: allInventory = [] } = useInventory();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('tinctures');
+  const [batchTrackingMode, setBatchTrackingMode] = useBatchTrackingMode();
 
   const handleExportCsv = () => {
     if (allInventory.length === 0) {
@@ -84,6 +88,17 @@ const Index = () => {
             <div className="flex items-center gap-2 relative">
               <AddHerbDialog />
               <DuplicateHerbsReview />
+              <Toggle
+                pressed={batchTrackingMode}
+                onPressedChange={setBatchTrackingMode}
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1 data-[state=on]:bg-purple-500/20 data-[state=on]:text-purple-700 dark:data-[state=on]:text-purple-400"
+                title="Show batch tracking info"
+              >
+                <Hash className="h-4 w-4" />
+                <span className="text-xs hidden sm:inline">Batch Tracking</span>
+              </Toggle>
               <Button variant="ghost" size="icon" asChild title="Ordering">
                 <Link to="/ordering"><ShoppingCart className="h-4 w-4" /></Link>
               </Button>
@@ -122,6 +137,8 @@ const Index = () => {
           </div>
         </section>
 
+        {batchTrackingMode && <BatchTrackingPanel activeTab={activeTab} />}
+
         {/* Tab Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsContent value="tinctures" className="mt-0">
@@ -146,6 +163,7 @@ const Index = () => {
                   icon={<Package className="h-5 w-5 text-blue-600" />}
                   description="Storage inventory"
                   searchQuery={searchQuery}
+                  showBatchInfo={batchTrackingMode}
                 />
                 <InventorySection
                   location="tincture"
@@ -153,6 +171,7 @@ const Index = () => {
                   icon={<Droplets className="h-5 w-5 text-purple-600" />}
                   description="Currently brewing"
                   searchQuery={searchQuery}
+                  showBatchInfo={batchTrackingMode}
                 />
                 <InventorySection
                   location="clinic"
@@ -160,13 +179,14 @@ const Index = () => {
                   icon={<Stethoscope className="h-5 w-5 text-green-600" />}
                   description="Ready to use"
                   searchQuery={searchQuery}
+                  showBatchInfo={batchTrackingMode}
                 />
               </div>
             </section>
           </TabsContent>
 
           <TabsContent value="bulk" className="mt-0">
-            <BulkInventorySection />
+            <BulkInventorySection showBatchInfo={batchTrackingMode} />
           </TabsContent>
         </Tabs>
       </main>

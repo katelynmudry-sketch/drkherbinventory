@@ -20,7 +20,9 @@
       "Bash(npm run dev:*)",
       "Bash(gh run list:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:katelynmudry-sketch.github.io)"
+      "WebFetch(domain:katelynmudry-sketch.github.io)",
+      "mcp__5c2cc3c3-944e-4054-8cea-4a8fb1fd9451__list_projects",
+      "mcp__5c2cc3c3-944e-4054-8cea-4a8fb1fd9451__list_tables"
     ]
   }
 }
