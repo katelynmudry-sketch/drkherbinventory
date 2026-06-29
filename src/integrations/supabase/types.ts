@@ -350,6 +350,81 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          plan_tier: 'none' | 'basic' | 'pro'
+          status: string
+          current_period_end: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          plan_tier?: 'none' | 'basic' | 'pro'
+          status?: string
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          plan_tier?: 'none' | 'basic' | 'pro'
+          status?: string
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      voice_api_usage: {
+        Row: {
+          id: string
+          user_id: string
+          created_at: string
+          model: string
+          input_tokens: number
+          output_tokens: number
+          transcript_len: number | null
+          action_count: number
+          success: boolean
+          error_message: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          created_at?: string
+          model: string
+          input_tokens?: number
+          output_tokens?: number
+          transcript_len?: number | null
+          action_count?: number
+          success?: boolean
+          error_message?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          created_at?: string
+          model?: string
+          input_tokens?: number
+          output_tokens?: number
+          transcript_len?: number | null
+          action_count?: number
+          success?: boolean
+          error_message?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,28 +1,30 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart, Hash } from 'lucide-react';
+import { Package, Droplets, Stethoscope, LogOut, Leaf, Search, Package2, Download, ShoppingCart, Hash, CreditCard, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { VoiceQuery } from '@/components/VoiceQuery';
 import { VoiceHerbAdd } from '@/components/VoiceHerbAdd';
+import { VoiceAssistant } from '@/components/VoiceAssistant';
 import { InventorySection } from '@/components/InventorySection';
 import { BulkInventorySection } from '@/components/BulkInventorySection';
 import { TinctureRestockPanel } from '@/components/TinctureRestockPanel';
 import { BatchTrackingPanel } from '@/components/BatchTrackingPanel';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { DuplicateHerbsReview } from '@/components/DuplicateHerbsReview';
-import { AuthForm } from '@/components/AuthForm';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventory } from '@/hooks/useInventory';
 import { useBatchTrackingMode } from '@/hooks/useBatchTrackingMode';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStripePortal } from '@/hooks/useSubscription';
 import { toast } from 'sonner';
 
 const Index = () => {
-  const { user, loading, signOut } = useAuth();
+  const { signOut } = useAuth();
   const { data: allInventory = [] } = useInventory();
+  const stripePortal = useStripePortal();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('tinctures');
   const [batchTrackingMode, setBatchTrackingMode] = useBatchTrackingMode();
@@ -54,21 +56,6 @@ const Index = () => {
     URL.revokeObjectURL(url);
     toast.success('Inventory exported successfully');
   };
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 to-amber-50 dark:from-green-950/20 dark:to-amber-950/20">
-        <div className="space-y-4 text-center">
-          <Skeleton className="mx-auto h-12 w-12 rounded-full" />
-          <Skeleton className="h-6 w-32" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthForm />;
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-amber-50 dark:from-green-950/20 dark:to-amber-950/20">
@@ -105,6 +92,15 @@ const Index = () => {
               <Button variant="ghost" size="icon" onClick={handleExportCsv} title="Export to CSV">
                 <Download className="h-4 w-4" />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => stripePortal.mutate()}
+                disabled={stripePortal.isPending}
+                title="Manage Billing"
+              >
+                {stripePortal.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              </Button>
               <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -131,9 +127,10 @@ const Index = () => {
         {/* Voice Section */}
         <section>
           <h2 className="mb-3 text-lg font-semibold">Voice Controls</h2>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <VoiceQuery activeTab={activeTab} />
             <VoiceHerbAdd activeTab={activeTab} />
+            <VoiceAssistant activeTab={activeTab} />
           </div>
         </section>
 

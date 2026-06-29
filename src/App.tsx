@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AppGate } from "@/components/AppGate";
 import Index from "./pages/Index";
 import Reports from "./pages/Reports";
 import Ordering from "./pages/Ordering";
@@ -16,13 +17,15 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/ordering" element={<Ordering />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AppGate>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/ordering" element={<Ordering />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AppGate>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
