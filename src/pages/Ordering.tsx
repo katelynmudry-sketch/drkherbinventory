@@ -19,8 +19,12 @@ import {
   useDeleteHerbPrice,
   useReorderQtys,
   useUpsertReorderQty,
+  useMergedSuppliers,
+  useMergedHerbPricing,
   computeOrderSuggestion,
   type HerbPricing,
+  type MergedSupplier,
+  type MergedHerbPricing,
   type OrderSuggestion,
 } from '@/hooks/usePricing';
 import { HERB_LIST } from '@/lib/herbCorrection';
@@ -295,8 +299,11 @@ const Ordering = () => {
   // Data
   const { data: inventory = [] } = useInventory('bulk');
   const { data: backstockInventory = [] } = useInventory('backstock');
-  const { data: suppliers = [] } = useSuppliers();
-  const { data: pricing = [] } = useHerbPricing();
+  const { data: suppliers = [] } = useMergedSuppliers();
+  const { data: pricing = [] } = useMergedHerbPricing();
+  // Personal-only data for the Manage section (edit/delete operations)
+  const { data: personalSuppliers = [] } = useSuppliers();
+  const { data: personalPricing = [] } = useHerbPricing();
   const { data: reorderQtys = [] } = useReorderQtys();
   const upsertReorderQty = useUpsertReorderQty();
   const updateLowThreshold = useUpdateLowThreshold();
@@ -554,7 +561,15 @@ const Ordering = () => {
                         </th>
                         <th className="px-3 pb-2 font-medium">Reorder qty</th>
                         {suppliers.map(s => (
-                          <th key={s.id} className="px-3 pb-2 font-medium text-right">{s.name} ($/lb)</th>
+                          <th key={s.id} className="px-3 pb-2 font-medium text-right">
+                            <span className="flex items-center justify-end gap-1.5">
+                              {s.name}
+                              {s.source === 'shared' && (
+                                <Badge variant="secondary" className="text-xs py-0 px-1 font-normal">shared</Badge>
+                              )}
+                            </span>
+                            <span className="text-xs font-normal opacity-70">$/lb</span>
+                          </th>
                         ))}
                         <th className="px-3 pb-2 font-medium text-right">Best price</th>
                         <th className="px-3 pb-2 w-8"></th>
@@ -883,11 +898,11 @@ const Ordering = () => {
                 </div>
               </div>
 
-              {/* Per-supplier pricing tables */}
-              {suppliers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No suppliers yet. Add one above, or run the import scripts to load Pacific Botanicals and Clef des Champs pricing.</p>
+              {/* Personal suppliers — fully editable */}
+              {personalSuppliers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No personal suppliers yet. Add one above to track your own pricing.</p>
               ) : (
-                suppliers.map(supplier => (
+                personalSuppliers.map(supplier => (
                   <div key={supplier.id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -899,7 +914,7 @@ const Ordering = () => {
                           </a>
                         )}
                         <Badge variant="outline" className="text-xs">
-                          {pricing.filter(p => p.supplier_id === supplier.id).length} herbs
+                          {personalPricing.filter(p => p.supplier_id === supplier.id).length} herbs
                         </Badge>
                       </div>
                       <Button
@@ -914,9 +929,66 @@ const Ordering = () => {
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                    <SupplierPricingTable supplierId={supplier.id} pricing={pricing} />
+                    <SupplierPricingTable supplierId={supplier.id} pricing={personalPricing} />
                   </div>
                 ))
+              )}
+
+              {/* Shared suppliers — read-only reference data */}
+              {suppliers.some(s => s.source === 'shared') && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">Shared pricing</span>
+                    <Badge variant="secondary" className="text-xs">read-only</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pre-loaded supplier data. To override a price, add a personal supplier with the same name and enter your own pricing above.
+                  </p>
+                  {suppliers.filter(s => s.source === 'shared').map(supplier => {
+                    const rows = pricing.filter(p => p.supplier_id === supplier.id && p.source === 'shared')
+                      .sort((a, b) => a.herb_name.localeCompare(b.herb_name));
+                    return (
+                      <div key={supplier.id} className="border border-dashed rounded-lg p-4 bg-muted/20">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium">{supplier.name}</span>
+                          {supplier.url && (
+                            <a href={supplier.url} target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-0.5">
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                          <Badge variant="secondary" className="text-xs">{rows.length} herbs</Badge>
+                        </div>
+                        {rows.length > 0 && (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-muted-foreground border-b">
+                                <th className="px-3 pb-1 font-medium">Herb</th>
+                                <th className="px-3 pb-1 font-medium">$/lb</th>
+                                <th className="px-3 pb-1 font-medium">Package</th>
+                                <th className="px-3 pb-1 font-medium text-right">Updated</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map(row => (
+                                <tr key={row.id} className="border-b last:border-0">
+                                  <td className="px-3 py-1.5 font-medium">{row.herb_name}</td>
+                                  <td className="px-3 py-1.5">${Number(row.price_per_lb).toFixed(2)}</td>
+                                  <td className="px-3 py-1.5 text-muted-foreground">
+                                    {row.package_size_g ? `${row.package_size_g}g @ ${fmt(Number(row.package_price ?? 0))}` : '—'}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right text-muted-foreground text-xs">
+                                    {row.last_updated ? new Date(row.last_updated).toLocaleDateString('en-CA') : '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
 
               <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">

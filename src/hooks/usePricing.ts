@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type PricingSource = 'personal' | 'shared';
 
 export interface Supplier {
   id: string;
@@ -12,6 +15,21 @@ export interface Supplier {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SharedSupplier {
+  id: string;
+  name: string;
+  url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Personal or shared supplier unified for display */
+export interface MergedSupplier extends SharedSupplier {
+  user_id: string; // '' for shared rows
+  source: PricingSource;
 }
 
 export interface HerbPricing {
@@ -28,6 +46,25 @@ export interface HerbPricing {
   last_updated: string;
   // Joined
   suppliers?: { name: string; url: string | null };
+}
+
+export interface SharedHerbPricing {
+  id: string;
+  herb_name: string;
+  supplier_id: string; // references shared_suppliers.id
+  price_per_lb: number;
+  package_size_g: number | null;
+  package_price: number | null;
+  supplier_item_code: string | null;
+  supplier_item_name: string | null;
+  notes: string | null;
+  last_updated: string;
+  shared_suppliers?: { name: string; url: string | null };
+}
+
+/** Personal or shared pricing row unified for display */
+export interface MergedHerbPricing extends HerbPricing {
+  source: PricingSource;
 }
 
 export interface HerbReorderQty {
@@ -188,6 +225,139 @@ export function useDeleteHerbPrice() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['herb_pricing'] }),
   });
+}
+
+// ─── Shared Suppliers & Pricing (read-only, admin-loaded) ────────────────────
+
+export function useSharedSuppliers() {
+  return useQuery({
+    queryKey: ['shared_suppliers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shared_suppliers')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return (data ?? []) as SharedSupplier[];
+    },
+  });
+}
+
+export function useSharedHerbPricing() {
+  return useQuery({
+    queryKey: ['shared_herb_pricing'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shared_herb_pricing')
+        .select('*, shared_suppliers(name, url)')
+        .order('herb_name');
+      if (error) throw error;
+      return (data ?? []) as SharedHerbPricing[];
+    },
+  });
+}
+
+/**
+ * Merged supplier list: personal suppliers take precedence over shared ones with the same name.
+ * The returned list is sorted by name and deduped — one entry per supplier name.
+ */
+export function useMergedSuppliers() {
+  const personalQuery = useSuppliers();
+  const sharedQuery = useSharedSuppliers();
+
+  const data = useMemo(() => {
+    const personal = personalQuery.data ?? [];
+    const shared = sharedQuery.data ?? [];
+    const personalNames = new Set(personal.map(s => s.name.toLowerCase()));
+
+    const result: MergedSupplier[] = personal.map(s => ({ ...s, source: 'personal' as PricingSource }));
+
+    for (const s of shared) {
+      if (!personalNames.has(s.name.toLowerCase())) {
+        result.push({ ...s, user_id: '', source: 'shared' as PricingSource });
+      }
+    }
+
+    return result.sort((a, b) => a.name.localeCompare(b.name));
+  }, [personalQuery.data, sharedQuery.data]);
+
+  return {
+    data,
+    isLoading: personalQuery.isLoading || sharedQuery.isLoading,
+  };
+}
+
+/**
+ * Merged pricing list: personal rows override shared rows for the same (herb_name, supplier_name) pair.
+ * Shared pricing rows are remapped to canonical supplier IDs (personal ID when a personal supplier
+ * of the same name exists, otherwise the shared supplier ID).
+ */
+export function useMergedHerbPricing() {
+  const personalSuppliersQuery = useSuppliers();
+  const sharedSuppliersQuery = useSharedSuppliers();
+  const personalPricingQuery = useHerbPricing();
+  const sharedPricingQuery = useSharedHerbPricing();
+
+  const data = useMemo(() => {
+    const personalSuppliers = personalSuppliersQuery.data ?? [];
+    const sharedSuppliers = sharedSuppliersQuery.data ?? [];
+    const personalPricing = personalPricingQuery.data ?? [];
+    const sharedPricing = sharedPricingQuery.data ?? [];
+
+    // Personal supplier by name (for override detection)
+    const personalByName = new Map(personalSuppliers.map(s => [s.name.toLowerCase(), s]));
+
+    // Shared supplier ID → canonical ID (personal ID if overridden, else shared ID)
+    const sharedToCanonical = new Map<string, string>();
+    for (const s of sharedSuppliers) {
+      const personal = personalByName.get(s.name.toLowerCase());
+      sharedToCanonical.set(s.id, personal?.id ?? s.id);
+    }
+
+    const result: MergedHerbPricing[] = personalPricing.map(p => ({
+      ...p,
+      source: 'personal' as PricingSource,
+    }));
+
+    // Keys covered by personal pricing (herb_name_lower | canonical_supplier_id)
+    const personalKeys = new Set(
+      personalPricing.map(p => `${p.herb_name.toLowerCase()}|${p.supplier_id}`)
+    );
+
+    for (const p of sharedPricing) {
+      const canonicalSupplierId = sharedToCanonical.get(p.supplier_id) ?? p.supplier_id;
+      const key = `${p.herb_name.toLowerCase()}|${canonicalSupplierId}`;
+      if (!personalKeys.has(key)) {
+        const sharedSupplier = p.shared_suppliers;
+        result.push({
+          id: p.id,
+          user_id: '',
+          herb_name: p.herb_name,
+          supplier_id: canonicalSupplierId,
+          price_per_lb: p.price_per_lb,
+          package_size_g: p.package_size_g,
+          package_price: p.package_price,
+          supplier_item_code: p.supplier_item_code,
+          supplier_item_name: p.supplier_item_name,
+          notes: p.notes,
+          last_updated: p.last_updated,
+          source: 'shared' as PricingSource,
+          suppliers: sharedSupplier ?? undefined,
+        });
+      }
+    }
+
+    return result;
+  }, [personalSuppliersQuery.data, sharedSuppliersQuery.data, personalPricingQuery.data, sharedPricingQuery.data]);
+
+  return {
+    data,
+    isLoading:
+      personalSuppliersQuery.isLoading ||
+      sharedSuppliersQuery.isLoading ||
+      personalPricingQuery.isLoading ||
+      sharedPricingQuery.isLoading,
+  };
 }
 
 // ─── Reorder Quantities ───────────────────────────────────────────────────────
