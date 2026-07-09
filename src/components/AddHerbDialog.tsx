@@ -175,6 +175,8 @@ export function AddHerbDialog() {
                 <SelectItem value="backstock">Backstock</SelectItem>
                 <SelectItem value="tincture">Tincture</SelectItem>
                 <SelectItem value="bulk">Bulk</SelectItem>
+                <SelectItem value="bulk_backstock">Bulk Backstock</SelectItem>
+                <SelectItem value="bulk_clinic">Clinic Bulk</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1633,6 +1633,7 @@ function ClinicBulkView({
   const updateInventory = useUpdateInventory();
   const addInventory = useAddInventory();
   const deleteInventory = useDeleteInventory();
+  const addHerb = useAddHerb();
 
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1640,12 +1641,24 @@ function ClinicBulkView({
   const [editNotes, setEditNotes] = useState('');
   const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
   const [transferQty, setTransferQty] = useState(1);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedHerbId, setSelectedHerbId] = useState('');
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [selectedNotes, setSelectedNotes] = useState('');
+  const [herbPickerOpen, setHerbPickerOpen] = useState(false);
+  const [herbPickerSearch, setHerbPickerSearch] = useState('');
 
   const bulkByHerbId = useMemo(() => {
     const map = new Map<string, InventoryItem>();
     for (const item of bulkInventory) map.set(item.herb_id, item);
     return map;
   }, [bulkInventory]);
+
+  const clinicByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of clinicInventory) map.set(item.herb_id, item);
+    return map;
+  }, [clinicInventory]);
 
   const filtered = useMemo(() => {
     return clinicInventory
@@ -1735,22 +1748,234 @@ function ClinicBulkView({
     }
   };
 
+  const handleAddHerb = async () => {
+    if (!selectedHerbId && !herbPickerSearch.trim()) return;
+
+    try {
+      let resolvedHerbId = selectedHerbId;
+      if (!resolvedHerbId && herbPickerSearch.trim()) {
+        const newHerb = await addHerb.mutateAsync({ name: herbPickerSearch.trim() });
+        resolvedHerbId = newHerb.id;
+      }
+      if (!resolvedHerbId) return;
+
+      const herbRecord = herbs.find(h => h.id === resolvedHerbId);
+      const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const status = calcBulkStatus(selectedQuantity, herbThreshold);
+      const existing = clinicByHerbId.get(resolvedHerbId);
+
+      if (existing) {
+        await updateInventory.mutateAsync({
+          id: existing.id,
+          status,
+          quantity: selectedQuantity,
+          notes: selectedNotes || null,
+        });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: resolvedHerbId,
+          location: 'bulk_clinic',
+          status,
+          quantity: selectedQuantity,
+          notes: selectedNotes || undefined,
+        });
+      }
+
+      setSelectedHerbId('');
+      setSelectedQuantity(1);
+      setSelectedNotes('');
+      setHerbPickerSearch('');
+      setIsAddDialogOpen(false);
+      toast.success(existing ? 'Clinic Bulk updated' : 'Herb added to Clinic Bulk');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save');
+    }
+  };
+
+  const handleAddDialogClose = (open: boolean) => {
+    setIsAddDialogOpen(open);
+    if (!open) {
+      setSelectedHerbId('');
+      setSelectedQuantity(1);
+      setSelectedNotes('');
+      setHerbPickerSearch('');
+    }
+  };
+
+  const selectedHerb = herbs.find(h => h.id === selectedHerbId);
+  const selectedHerbExistingClinic = selectedHerbId ? clinicByHerbId.get(selectedHerbId) : undefined;
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onExit}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
-          <Stethoscope className="h-5 w-5 text-green-600" />
+      <div className="flex items-center gap-3 justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onExit}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
+            <Stethoscope className="h-5 w-5 text-green-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Clinic Bulk</h2>
+            <p className="text-sm text-muted-foreground">
+              {clinicInventory.length} herb{clinicInventory.length !== 1 ? 's' : ''} kept at the clinic
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold">Clinic Bulk</h2>
-          <p className="text-sm text-muted-foreground">
-            {clinicInventory.length} herb{clinicInventory.length !== 1 ? 's' : ''} kept at the clinic
-          </p>
-        </div>
+        <Dialog open={isAddDialogOpen} onOpenChange={handleAddDialogClose}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Herb
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="shrink-0">
+              <DialogTitle>Add to Clinic Bulk</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4 overflow-y-auto pr-1">
+              <div className="space-y-2">
+                <Label>Herb</Label>
+                <Popover open={herbPickerOpen} onOpenChange={setHerbPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={herbPickerOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {selectedHerb
+                        ? getDisplayName(selectedHerb)
+                        : herbPickerSearch.trim()
+                        ? `"${herbPickerSearch.trim()}" (new herb)`
+                        : "Search or select an herb..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" side="bottom">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Type to search or add new herb..."
+                        value={herbPickerSearch}
+                        onValueChange={(v) => {
+                          setHerbPickerSearch(v);
+                          if (selectedHerbId) setSelectedHerbId('');
+                        }}
+                      />
+                      <CommandList className="max-h-48 overflow-y-auto">
+                        {(() => {
+                          const q = herbPickerSearch.toLowerCase();
+                          const filteredHerbOptions = herbs.filter(h =>
+                            !q ||
+                            h.name.toLowerCase().includes(q) ||
+                            h.common_name?.toLowerCase().includes(q) ||
+                            h.latin_name?.toLowerCase().includes(q) ||
+                            h.pinyin_name?.toLowerCase().includes(q)
+                          );
+                          return (
+                            <>
+                              {filteredHerbOptions.length === 0 && !herbPickerSearch.trim() && (
+                                <CommandEmpty>No herbs found.</CommandEmpty>
+                              )}
+                              <CommandGroup>
+                                {filteredHerbOptions.map((herb) => {
+                                  const existingClinic = clinicByHerbId.get(herb.id);
+                                  return (
+                                    <CommandItem
+                                      key={herb.id}
+                                      value={herb.id}
+                                      onSelect={() => {
+                                        setSelectedHerbId(herb.id);
+                                        setHerbPickerSearch('');
+                                        if (existingClinic) setSelectedQuantity(existingClinic.quantity ?? 1);
+                                        setHerbPickerOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {getDisplayName(herb)}
+                                      {[herb.common_name, herb.latin_name, herb.pinyin_name]
+                                        .filter((n): n is string => !!n && n !== getDisplayName(herb))
+                                        .map((n, i) => (
+                                          <span key={i} className="ml-1 text-muted-foreground text-xs">({n})</span>
+                                        ))}
+                                      {existingClinic && (
+                                        <span className="ml-auto text-xs text-muted-foreground">{formatLbs(existingClinic.quantity ?? 1)} lb</span>
+                                      )}
+                                    </CommandItem>
+                                  );
+                                })}
+                                {herbPickerSearch.trim() && filteredHerbOptions.every(h => h.name.toLowerCase() !== herbPickerSearch.toLowerCase()) && (
+                                  <CommandItem
+                                    value="__create__"
+                                    onSelect={() => {
+                                      setSelectedHerbId('');
+                                      setHerbPickerOpen(false);
+                                    }}
+                                  >
+                                    <Plus className="mr-2 h-4 w-4 text-primary" />
+                                    <span>Create <strong>"{herbPickerSearch.trim()}"</strong> as new herb</span>
+                                  </CommandItem>
+                                )}
+                              </CommandGroup>
+                            </>
+                          );
+                        })()}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Quantity (lbs)</Label>
+                <Select value={String(selectedQuantity)} onValueChange={(v) => setSelectedQuantity(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  placeholder="Add any notes about this herb..."
+                  value={selectedNotes}
+                  onChange={(e) => setSelectedNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+
+              {selectedHerbExistingClinic && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  This herb already has {formatLbs(selectedHerbExistingClinic.quantity ?? 0)} lb in Clinic Bulk — saving will update it.
+                </p>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={handleAddHerb}
+                disabled={(!selectedHerbId && !herbPickerSearch.trim()) || addInventory.isPending || updateInventory.isPending || addHerb.isPending}
+              >
+                {(addInventory.isPending || updateInventory.isPending || addHerb.isPending)
+                  ? 'Saving...'
+                  : selectedHerbExistingClinic
+                  ? 'Update Clinic Bulk'
+                  : !selectedHerbId && herbPickerSearch.trim()
+                  ? `Add "${herbPickerSearch.trim()}" to Clinic Bulk`
+                  : 'Add to Clinic Bulk'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}
