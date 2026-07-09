@@ -99,7 +99,7 @@ Everything lives in the same Supabase database - your phone and computer both ac
 ## Getting Your Supabase Credentials
 
 1. Go to https://supabase.com and log in
-2. Open your project (ID: `axpiusakndqdkmnzatig`)
+2. Open your project (ID: `fyibctwovdussxizffgu`)
 3. Go to **Project Settings** → **API**
 4. Copy:
    - **Project URL** → use for `VITE_SUPABASE_URL`

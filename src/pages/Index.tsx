@@ -62,7 +62,7 @@ const Index = () => {
       {/* Header with Tabs */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                 <Leaf className="h-5 w-5 text-primary" />
@@ -72,7 +72,7 @@ const Index = () => {
                 <p className="text-xs text-muted-foreground">Your medicinary tracker</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 relative">
+            <div className="flex flex-wrap items-center gap-2 relative">
               <AddHerbDialog />
               <DuplicateHerbsReview />
               <Toggle

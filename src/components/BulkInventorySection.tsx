@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown, ClipboardList, Archive } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown, ClipboardList, Archive, Stethoscope, ArrowRightLeft } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,29 +42,16 @@ import {
 } from '@/hooks/useInventory';
 import { useBulkBatches, useReceiveBulkBatch, BulkBatch } from '@/hooks/useBulkBatches';
 import { HERB_LIST } from '@/lib/herbCorrection';
+import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 
-// Standard lb increments available in the UI
-const LB_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
-// Default low-stock threshold when herb has no custom value
-const DEFAULT_LOW_THRESHOLD = 0.25; // lbs
 // Available per-herb low threshold options
 const THRESHOLD_OPTIONS = [0.25, 0.5] as const;
 const NONE_VALUE = '__none__';
-
-function formatLbs(qty: number): string {
-  return String(qty);
-}
-
-function calcBulkStatus(qty: number, lowThreshold: number): 'out' | 'low' | 'full' {
-  if (qty <= 0) return 'out';
-  if (qty <= lowThreshold) return 'low';
-  return 'full';
-}
 
 interface BulkInventorySectionProps {
   showBatchInfo?: boolean;
@@ -73,6 +60,7 @@ interface BulkInventorySectionProps {
 export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySectionProps = {}) {
   const { data: inventory = [], isLoading } = useInventory('bulk');
   const { data: backstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: clinicBulkInventory = [] } = useInventory('bulk_clinic');
   const { data: herbs = [] } = useHerbs();
   const { data: bulkBatches = [] } = useBulkBatches();
   const addInventory = useAddInventory();
@@ -92,14 +80,19 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   }, [bulkBatches]);
 
   const [stockCountMode, setStockCountMode] = useState(false);
+  const [clinicBulkMode, setClinicBulkMode] = useState(false);
+  const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
+  const [transferQty, setTransferQty] = useState(1);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [selectedBackstockQty, setSelectedBackstockQty] = useState<number | null>(null);
+  const [selectedClinicBulkQty, setSelectedClinicBulkQty] = useState<number | null>(null);
   const [selectedNotes, setSelectedNotes] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuantity, setEditQuantity] = useState(1);
   const [editBackstockQty, setEditBackstockQty] = useState<number | null>(null);
+  const [editClinicBulkQty, setEditClinicBulkQty] = useState<number | null>(null);
   const [editHerbName, setEditHerbName] = useState('');
   const [editCommonName, setEditCommonName] = useState('');
   const [editLatinName, setEditLatinName] = useState('');
@@ -120,6 +113,15 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
     }
     return map;
   }, [backstockInventory]);
+
+  // Build a lookup: herb_id → clinic bulk inventory item
+  const clinicBulkByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of clinicBulkInventory) {
+      map.set(item.herb_id, item);
+    }
+    return map;
+  }, [clinicBulkInventory]);
 
   const handleAdd = async () => {
     if (!selectedHerbId && !herbPickerSearch.trim()) return;
@@ -181,9 +183,30 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
         }
       }
 
+      // Handle clinic bulk
+      if (selectedClinicBulkQty !== null) {
+        const existingClinicBulk = clinicBulkByHerbId.get(resolvedHerbId);
+        const cbStatus = calcBulkStatus(selectedClinicBulkQty, herbThreshold);
+        if (existingClinicBulk) {
+          await updateInventory.mutateAsync({
+            id: existingClinicBulk.id,
+            status: cbStatus,
+            quantity: selectedClinicBulkQty,
+          });
+        } else {
+          await addInventory.mutateAsync({
+            herb_id: resolvedHerbId,
+            location: 'bulk_clinic',
+            status: cbStatus,
+            quantity: selectedClinicBulkQty,
+          });
+        }
+      }
+
       setSelectedHerbId('');
       setSelectedQuantity(1);
       setSelectedBackstockQty(null);
+      setSelectedClinicBulkQty(null);
       setSelectedNotes('');
       setHerbPickerSearch('');
       setIsAddDialogOpen(false);
@@ -199,6 +222,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
       setSelectedHerbId('');
       setSelectedQuantity(1);
       setSelectedBackstockQty(null);
+      setSelectedClinicBulkQty(null);
       setSelectedNotes('');
       setHerbPickerSearch('');
     }
@@ -244,6 +268,31 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
             quantity: editBackstockQty,
           });
         }
+      } else if (existingBackstock) {
+        // "None" selected on a row that already exists — remove it rather than
+        // silently leaving the old quantity in place while still reporting success.
+        await deleteInventory.mutateAsync(existingBackstock.id);
+      }
+
+      // Handle clinic bulk quantity (uses the herb's own low threshold, same as main Bulk)
+      const existingClinicBulk = clinicBulkByHerbId.get(herbId);
+      if (editClinicBulkQty !== null) {
+        if (existingClinicBulk) {
+          await updateInventory.mutateAsync({
+            id: existingClinicBulk.id,
+            status: calcBulkStatus(editClinicBulkQty, editLowThreshold),
+            quantity: editClinicBulkQty,
+          });
+        } else {
+          await addInventory.mutateAsync({
+            herb_id: herbId,
+            location: 'bulk_clinic',
+            status: calcBulkStatus(editClinicBulkQty, editLowThreshold),
+            quantity: editClinicBulkQty,
+          });
+        }
+      } else if (existingClinicBulk) {
+        await deleteInventory.mutateAsync(existingClinicBulk.id);
       }
 
       setEditingId(null);
@@ -255,6 +304,49 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
 
   const handleDelete = async (id: string) => {
     await deleteInventory.mutateAsync(id);
+  };
+
+  const handleOpenTransfer = (item: InventoryItem) => {
+    const maxQty = Number(item.quantity ?? 0);
+    if (maxQty <= 0) return;
+    setTransferItem(item);
+    setTransferQty(Math.min(1, maxQty));
+  };
+
+  const handleTransferToClinic = async () => {
+    if (!transferItem) return;
+    const currentQty = Number(transferItem.quantity ?? 0);
+    if (transferQty <= 0 || transferQty > currentQty) return;
+
+    try {
+      const herbThreshold = herbs.find(h => h.id === transferItem.herb_id)?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const newBulkQty = currentQty - transferQty;
+      await updateInventory.mutateAsync({
+        id: transferItem.id,
+        quantity: newBulkQty,
+        status: calcBulkStatus(newBulkQty, herbThreshold),
+      });
+
+      const existingClinic = clinicBulkByHerbId.get(transferItem.herb_id);
+      const newClinicQty = (existingClinic ? Number(existingClinic.quantity ?? 0) : 0) + transferQty;
+      const clinicStatus = calcBulkStatus(newClinicQty, herbThreshold);
+      if (existingClinic) {
+        await updateInventory.mutateAsync({ id: existingClinic.id, quantity: newClinicQty, status: clinicStatus });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: transferItem.herb_id,
+          location: 'bulk_clinic',
+          quantity: newClinicQty,
+          status: clinicStatus,
+        });
+      }
+
+      toast.success(`Moved ${formatLbs(transferQty)} lb to Clinic Bulk`);
+      setTransferItem(null);
+      setTransferQty(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to move to Clinic Bulk');
+    }
   };
 
   // Build lookup for existing bulk records by herb_id (for upsert logic)
@@ -301,14 +393,27 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   const selectedHerb = herbs.find(h => h.id === selectedHerbId);
   const selectedHerbExistingBulk = selectedHerbId ? bulkByHerbId.get(selectedHerbId) : undefined;
   const selectedHerbExistingBackstock = selectedHerbId ? backstockByHerbId.get(selectedHerbId) : undefined;
+  const selectedHerbExistingClinicBulk = selectedHerbId ? clinicBulkByHerbId.get(selectedHerbId) : undefined;
 
   if (stockCountMode) {
     return (
       <BulkStockCountView
         inventory={inventory}
         backstockInventory={backstockInventory}
+        clinicBulkInventory={clinicBulkInventory}
         herbs={herbs}
         onExit={() => setStockCountMode(false)}
+      />
+    );
+  }
+
+  if (clinicBulkMode) {
+    return (
+      <ClinicBulkView
+        clinicInventory={clinicBulkInventory}
+        bulkInventory={inventory}
+        herbs={herbs}
+        onExit={() => setClinicBulkMode(false)}
       />
     );
   }
@@ -329,6 +434,14 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            className="gap-2 flex-1 sm:flex-none"
+            onClick={() => setClinicBulkMode(true)}
+          >
+            <Stethoscope className="h-4 w-4" />
+            Clinic Bulk{clinicBulkInventory.length > 0 && ` (${clinicBulkInventory.length})`}
+          </Button>
           <Button
             variant="outline"
             className="gap-2 flex-1 sm:flex-none"
@@ -495,6 +608,34 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                 </div>
 
                 <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Stethoscope className="h-3.5 w-3.5 text-green-600" />
+                    Clinic Bulk qty (lbs)
+                    {selectedHerbExistingClinicBulk && (
+                      <span className="text-xs text-muted-foreground font-normal ml-1">
+                        (currently {formatLbs(selectedHerbExistingClinicBulk.quantity ?? 0)} lb)
+                      </span>
+                    )}
+                  </Label>
+                  <Select
+                    value={selectedClinicBulkQty !== null ? String(selectedClinicBulkQty) : NONE_VALUE}
+                    onValueChange={(v) => setSelectedClinicBulkQty(v === NONE_VALUE ? null : Number(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_VALUE}>None</SelectItem>
+                      {LB_OPTIONS.map(lb => (
+                        <SelectItem key={lb} value={String(lb)}>
+                          {formatLbs(lb)} lb
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Notes (optional)</Label>
                   <Textarea
                     placeholder="Add any notes about this herb..."
@@ -529,6 +670,49 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
         </div>
       </div>
 
+      {/* Transfer to Clinic Bulk dialog */}
+      <Dialog open={!!transferItem} onOpenChange={(open) => { if (!open) { setTransferItem(null); setTransferQty(1); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Stethoscope className="h-4 w-4 text-green-600" />
+              Move to Clinic Bulk
+            </DialogTitle>
+          </DialogHeader>
+          {transferItem && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {transferItem.herbs ? getDisplayName(transferItem.herbs) : ''} — {formatLbs(Number(transferItem.quantity ?? 0))} lb available in Bulk
+              </p>
+              <div className="space-y-2">
+                <Label>Amount to move (lbs)</Label>
+                <Select
+                  value={String(transferQty)}
+                  onValueChange={(v) => setTransferQty(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.filter(lb => lb <= Number(transferItem.quantity ?? 0)).map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>
+                        {formatLbs(lb)} lb
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setTransferItem(null); setTransferQty(1); }}>Cancel</Button>
+                <Button onClick={handleTransferToClinic} disabled={updateInventory.isPending || addInventory.isPending}>
+                  Move to Clinic Bulk
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Search and filter bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
@@ -562,21 +746,25 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
         ) : (
           filteredInventory.map((item) => {
             const backstock = backstockByHerbId.get(item.herb_id);
+            const clinicBulk = clinicBulkByHerbId.get(item.herb_id);
             return (
               <BulkItemCard
                 key={item.id}
                 item={item}
                 backstockQty={backstock?.quantity != null ? Number(backstock.quantity) : null}
+                clinicBulkQty={clinicBulk?.quantity != null ? Number(clinicBulk.quantity) : null}
                 lot={showBatchInfo ? currentLotByHerbId.get(item.herb_id) ?? null : null}
                 isEditing={editingId === item.id}
                 editQuantity={editQuantity}
                 editBackstockQty={editBackstockQty}
+                editClinicBulkQty={editClinicBulkQty}
                 editHerbName={editHerbName}
                 editNotes={editNotes}
                 onStartEdit={() => {
                   setEditingId(item.id);
                   setEditQuantity(Number(item.quantity ?? 1));
                   setEditBackstockQty(backstock?.quantity != null ? Number(backstock.quantity) : null);
+                  setEditClinicBulkQty(clinicBulk?.quantity != null ? Number(clinicBulk.quantity) : null);
                   setEditHerbName(item.herbs?.name || '');
                   setEditCommonName(item.herbs?.common_name || '');
                   setEditLatinName(item.herbs?.latin_name || '');
@@ -589,6 +777,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                 onSaveEdit={() => handleUpdateItem(item.id, item.herb_id, editHerbName)}
                 onQuantityChange={setEditQuantity}
                 onBackstockQtyChange={setEditBackstockQty}
+                onClinicBulkQtyChange={setEditClinicBulkQty}
                 onHerbNameChange={setEditHerbName}
                 onCommonNameChange={setEditCommonName}
                 onLatinNameChange={setEditLatinName}
@@ -602,6 +791,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                 editPreferredName={editPreferredName}
                 editLowThreshold={editLowThreshold}
                 onDelete={() => handleDelete(item.id)}
+                onTransferToClinic={() => handleOpenTransfer(item)}
               />
             );
           })
@@ -614,10 +804,12 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
 interface BulkItemCardProps {
   item: InventoryItem;
   backstockQty: number | null;
+  clinicBulkQty: number | null;
   lot?: BulkBatch | null;
   isEditing: boolean;
   editQuantity: number;
   editBackstockQty: number | null;
+  editClinicBulkQty: number | null;
   editHerbName: string;
   editCommonName: string;
   editLatinName: string;
@@ -630,6 +822,7 @@ interface BulkItemCardProps {
   onSaveEdit: () => void;
   onQuantityChange: (qty: number) => void;
   onBackstockQtyChange: (qty: number | null) => void;
+  onClinicBulkQtyChange: (qty: number | null) => void;
   onHerbNameChange: (name: string) => void;
   onCommonNameChange: (name: string) => void;
   onLatinNameChange: (name: string) => void;
@@ -638,15 +831,18 @@ interface BulkItemCardProps {
   onLowThresholdChange: (val: number) => void;
   onNotesChange: (notes: string) => void;
   onDelete: () => void;
+  onTransferToClinic: () => void;
 }
 
 function BulkItemCard({
   item,
   backstockQty,
+  clinicBulkQty,
   lot,
   isEditing,
   editQuantity,
   editBackstockQty,
+  editClinicBulkQty,
   editHerbName,
   editCommonName,
   editLatinName,
@@ -659,6 +855,7 @@ function BulkItemCard({
   onSaveEdit,
   onQuantityChange,
   onBackstockQtyChange,
+  onClinicBulkQtyChange,
   onHerbNameChange,
   onCommonNameChange,
   onLatinNameChange,
@@ -667,6 +864,7 @@ function BulkItemCard({
   onLowThresholdChange,
   onNotesChange,
   onDelete,
+  onTransferToClinic,
 }: BulkItemCardProps) {
   const qty = Number(item.quantity ?? 1);
   const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
@@ -776,6 +974,30 @@ function BulkItemCard({
             </div>
 
             <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Stethoscope className="h-3.5 w-3.5 text-green-600" />
+                Clinic Bulk qty (lbs)
+              </Label>
+              <Select
+                value={editClinicBulkQty !== null ? String(editClinicBulkQty) : NONE_VALUE}
+                onValueChange={(v) => onClinicBulkQtyChange(v === NONE_VALUE ? null : Number(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>None</SelectItem>
+                  <SelectItem value="0">Out (0 lb)</SelectItem>
+                  {LB_OPTIONS.map(lb => (
+                    <SelectItem key={lb} value={String(lb)}>
+                      {formatLbs(lb)} lb
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label>Low stock alert at</Label>
               <Select
                 value={String(editLowThreshold)}
@@ -848,9 +1070,26 @@ function BulkItemCard({
                 {formatLbs(backstockQty)}
               </span>
             )}
+            {/* Clinic Bulk badge */}
+            {clinicBulkQty !== null && (
+              <span className="flex items-center gap-0.5 text-xs font-medium text-green-600 dark:text-green-400 whitespace-nowrap">
+                <Stethoscope className="h-3 w-3" />
+                {formatLbs(clinicBulkQty)}
+              </span>
+            )}
             {/* Quantity badge */}
             <LbsBadge qty={qty} lowThreshold={herbThreshold} isOrdered={isOrdered} />
             {/* Actions */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              onClick={onTransferToClinic}
+              disabled={qty <= 0}
+              title="Move to Clinic Bulk"
+            >
+              <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
             <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={onStartEdit}>
               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
@@ -893,11 +1132,13 @@ function LbsBadge({ qty, lowThreshold, isOrdered }: { qty: number; lowThreshold:
 function BulkStockCountView({
   inventory,
   backstockInventory,
+  clinicBulkInventory,
   herbs,
   onExit,
 }: {
   inventory: InventoryItem[];
   backstockInventory: InventoryItem[];
+  clinicBulkInventory: InventoryItem[];
   herbs: Herb[];
   onExit: () => void;
 }) {
@@ -923,6 +1164,13 @@ function BulkStockCountView({
     return map;
   }, [backstockInventory]);
 
+  // herb_id → existing bulk_clinic inventory item
+  const clinicBulkById = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of clinicBulkInventory) map.set(item.herb_id, item);
+    return map;
+  }, [clinicBulkInventory]);
+
   // herbName (lowercase) → herb record — case-insensitive so HERB_LIST names match DB names
   // e.g. HERB_LIST "Black Cohosh" matches DB "Black cohosh"
   const herbByName = useMemo(() => {
@@ -930,6 +1178,9 @@ function BulkStockCountView({
     for (const h of herbs) map.set(h.name.toLowerCase(), h);
     return map;
   }, [herbs]);
+
+  // Extra herb names added during this stock count session (not yet in HERB_LIST or DB inventory)
+  const [sessionHerbNames, setSessionHerbNames] = useState<string[]>([]);
 
   // Full list of herb names for display: HERB_LIST + any bulk inventory herbs not in it
   // Uses herbs.name as the canonical key throughout
@@ -959,9 +1210,12 @@ function BulkStockCountView({
   const [selections, setSelections] = useState<Map<string, number | 'out' | null>>(() => new Map());
   // herbName → selected backstock qty
   const [backstockSelections, setBackstockSelections] = useState<Map<string, number | null>>(() => new Map());
+  // herbName → selected clinic bulk qty
+  const [clinicBulkSelections, setClinicBulkSelections] = useState<Map<string, number | null>>(() => new Map());
   // Track which herbs the user has manually tapped so DB sync doesn't overwrite them
   const [userTouched, setUserTouched] = useState<Set<string>>(() => new Set());
   const [userTouchedBs, setUserTouchedBs] = useState<Set<string>>(() => new Set());
+  const [userTouchedCb, setUserTouchedCb] = useState<Set<string>>(() => new Set());
 
   // Sync bulk selections from DB. Looks up by herb_id to avoid name-mismatch bugs.
   useEffect(() => {
@@ -1000,8 +1254,23 @@ function BulkStockCountView({
     });
   }, [backstockById, allHerbNames, herbByName]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Extra herb names added during this stock count session (not yet in HERB_LIST or DB inventory)
-  const [sessionHerbNames, setSessionHerbNames] = useState<string[]>([]);
+  // Sync clinic bulk selections from DB, also by herb_id.
+  useEffect(() => {
+    setClinicBulkSelections(prev => {
+      const next = new Map(prev);
+      for (const name of allHerbNames) {
+        if (userTouchedCb.has(name)) continue;
+        const herb = herbByName.get(name.toLowerCase());
+        const existing = herb ? clinicBulkById.get(herb.id) : undefined;
+        if (existing) {
+          next.set(name, Number(existing.quantity ?? 0) || null);
+        } else if (!next.has(name)) {
+          next.set(name, null);
+        }
+      }
+      return next;
+    });
+  }, [clinicBulkById, allHerbNames, herbByName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddNewHerb = async () => {
     const name = newHerbName.trim();
@@ -1032,6 +1301,15 @@ function BulkStockCountView({
   const toggleBackstock = (herbName: string, value: number) => {
     setUserTouchedBs(prev => new Set(prev).add(herbName));
     setBackstockSelections(prev => {
+      const next = new Map(prev);
+      next.set(herbName, prev.get(herbName) === value ? null : value);
+      return next;
+    });
+  };
+
+  const toggleClinicBulk = (herbName: string, value: number) => {
+    setUserTouchedCb(prev => new Set(prev).add(herbName));
+    setClinicBulkSelections(prev => {
       const next = new Map(prev);
       next.set(herbName, prev.get(herbName) === value ? null : value);
       return next;
@@ -1088,7 +1366,17 @@ function BulkStockCountView({
       bsEntriesToSave.push({ herbName, bsQty });
     }
 
-    if (entries.length === 0 && bsEntriesToSave.length === 0) {
+    const cbEntriesToSave: Array<{ herbName: string; cbQty: number }> = [];
+    for (const [herbName, cbQty] of clinicBulkSelections.entries()) {
+      if (cbQty === null) continue;
+      const herb = herbByName.get(herbName.toLowerCase());
+      const existing = herb ? clinicBulkById.get(herb.id) : undefined;
+      const dbCbVal = existing?.quantity != null ? Number(existing.quantity) : null;
+      if (cbQty === dbCbVal) continue;
+      cbEntriesToSave.push({ herbName, cbQty });
+    }
+
+    if (entries.length === 0 && bsEntriesToSave.length === 0 && cbEntriesToSave.length === 0) {
       toast.info('No changes to save.');
       return;
     }
@@ -1123,8 +1411,26 @@ function BulkStockCountView({
       }
     }
 
-    const totalSaved = entries.length + bsEntriesToSave.length - backstockErrors;
-    toast.success(`Saved ${totalSaved} change${totalSaved !== 1 ? 's' : ''}${backstockErrors > 0 ? ` (${backstockErrors} backstock skipped)` : ''}`, { duration: 2000 });
+    let clinicBulkErrors = 0;
+    for (const { herbName, cbQty } of cbEntriesToSave) {
+      const herb = herbByName.get(herbName.toLowerCase());
+      const existingClinicBulk = herb ? clinicBulkById.get(herb.id) : undefined;
+      const herbThreshold = Number(herb?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+      const cbStatus = calcBulkStatus(cbQty, herbThreshold);
+      try {
+        if (existingClinicBulk) {
+          await updateInventory.mutateAsync({ id: existingClinicBulk.id, quantity: cbQty, status: cbStatus });
+        } else if (herb) {
+          await addInventory.mutateAsync({ herb_id: herb.id, location: 'bulk_clinic', quantity: cbQty, status: cbStatus });
+        }
+      } catch {
+        clinicBulkErrors++;
+      }
+    }
+
+    const skipped = backstockErrors + clinicBulkErrors;
+    const totalSaved = entries.length + bsEntriesToSave.length + cbEntriesToSave.length - skipped;
+    toast.success(`Saved ${totalSaved} change${totalSaved !== 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`, { duration: 2000 });
   };
 
   return (
@@ -1154,6 +1460,10 @@ function BulkStockCountView({
           <Archive className="h-3 w-3 text-blue-500" />
           Backstock (lbs)
         </span>
+        <span className="flex-1 flex items-center gap-1">
+          <Stethoscope className="h-3 w-3 text-green-600" />
+          Clinic Bulk (lbs)
+        </span>
       </div>
 
       {/* Herb list */}
@@ -1161,6 +1471,7 @@ function BulkStockCountView({
         {filteredHerbs.map(herbName => {
           const sel = selections.get(herbName);
           const bsSel = backstockSelections.get(herbName);
+          const cbSel = clinicBulkSelections.get(herbName);
           return (
             <div key={herbName} className="flex items-start gap-2 px-3 py-2">
               <span className="w-36 flex-shrink-0 text-sm font-medium pt-1">
@@ -1229,6 +1540,32 @@ function BulkStockCountView({
                   </button>
                 )}
               </div>
+              {/* Clinic Bulk qty buttons */}
+              <div className="flex flex-wrap gap-1 flex-1">
+                {STOCK_COUNT_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => toggleClinicBulk(herbName, opt)}
+                    className={cn(
+                      'rounded px-2 py-1 text-xs font-medium border transition-colors',
+                      cbSel === opt
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'bg-background text-foreground border-border hover:bg-muted'
+                    )}
+                  >
+                    {opt}
+                  </button>
+                ))}
+                {cbSel !== null && (
+                  <button
+                    onClick={() => toggleClinicBulk(herbName, cbSel as number)}
+                    className="rounded px-2 py-1 text-xs font-medium border border-border bg-background text-muted-foreground hover:bg-muted"
+                    title="Clear clinic bulk"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1266,6 +1603,501 @@ function BulkStockCountView({
             {bulkUpsert.isPending ? 'Saving...' : 'Save Stock Count'}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clinic Bulk View ────────────────────────────────────────────────────────
+// A smaller subset of bulk herbs kept on hand at the clinic itself. Herbs get
+// here by being moved (transferred) from the main Bulk storage location.
+
+function ClinicBulkView({
+  clinicInventory,
+  bulkInventory,
+  herbs,
+  onExit,
+}: {
+  clinicInventory: InventoryItem[];
+  bulkInventory: InventoryItem[];
+  herbs: Herb[];
+  onExit: () => void;
+}) {
+  const updateInventory = useUpdateInventory();
+  const addInventory = useAddInventory();
+  const deleteInventory = useDeleteInventory();
+  const addHerb = useAddHerb();
+
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editQuantity, setEditQuantity] = useState(1);
+  const [editNotes, setEditNotes] = useState('');
+  const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
+  const [transferQty, setTransferQty] = useState(1);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedHerbId, setSelectedHerbId] = useState('');
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [selectedNotes, setSelectedNotes] = useState('');
+  const [herbPickerOpen, setHerbPickerOpen] = useState(false);
+  const [herbPickerSearch, setHerbPickerSearch] = useState('');
+
+  const bulkByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of bulkInventory) map.set(item.herb_id, item);
+    return map;
+  }, [bulkInventory]);
+
+  const clinicByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of clinicInventory) map.set(item.herb_id, item);
+    return map;
+  }, [clinicInventory]);
+
+  const filtered = useMemo(() => {
+    return clinicInventory
+      .filter(item => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (
+          item.herbs?.name?.toLowerCase().includes(q) ||
+          item.herbs?.common_name?.toLowerCase().includes(q) ||
+          item.herbs?.latin_name?.toLowerCase().includes(q) ||
+          item.herbs?.pinyin_name?.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const nameA = a.herbs?.name?.toLowerCase() || '';
+        const nameB = b.herbs?.name?.toLowerCase() || '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [clinicInventory, search]);
+
+  const handleStartEdit = (item: InventoryItem) => {
+    setEditingId(item.id);
+    setEditQuantity(Number(item.quantity ?? 1));
+    setEditNotes(item.notes || '');
+  };
+
+  const handleSaveEdit = async (item: InventoryItem) => {
+    try {
+      const herbThreshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      await updateInventory.mutateAsync({
+        id: item.id,
+        quantity: editQuantity,
+        status: calcBulkStatus(editQuantity, herbThreshold),
+        notes: editNotes || null,
+      });
+      setEditingId(null);
+      toast.success('Saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save changes');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteInventory.mutateAsync(id);
+  };
+
+  const handleOpenTransfer = (item: InventoryItem) => {
+    const maxQty = Number(item.quantity ?? 0);
+    if (maxQty <= 0) return;
+    setTransferItem(item);
+    setTransferQty(Math.min(1, maxQty));
+  };
+
+  const handleTransferToBulk = async () => {
+    if (!transferItem) return;
+    const currentQty = Number(transferItem.quantity ?? 0);
+    if (transferQty <= 0 || transferQty > currentQty) return;
+
+    try {
+      const herbThreshold = transferItem.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const newClinicQty = currentQty - transferQty;
+      await updateInventory.mutateAsync({
+        id: transferItem.id,
+        quantity: newClinicQty,
+        status: calcBulkStatus(newClinicQty, herbThreshold),
+      });
+
+      const existingBulk = bulkByHerbId.get(transferItem.herb_id);
+      const newBulkQty = (existingBulk ? Number(existingBulk.quantity ?? 0) : 0) + transferQty;
+      const bulkStatus = calcBulkStatus(newBulkQty, herbThreshold);
+      if (existingBulk) {
+        await updateInventory.mutateAsync({ id: existingBulk.id, quantity: newBulkQty, status: bulkStatus });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: transferItem.herb_id,
+          location: 'bulk',
+          quantity: newBulkQty,
+          status: bulkStatus,
+        });
+      }
+
+      toast.success(`Moved ${formatLbs(transferQty)} lb back to Bulk`);
+      setTransferItem(null);
+      setTransferQty(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to move to Bulk');
+    }
+  };
+
+  const handleAddHerb = async () => {
+    if (!selectedHerbId && !herbPickerSearch.trim()) return;
+
+    try {
+      let resolvedHerbId = selectedHerbId;
+      if (!resolvedHerbId && herbPickerSearch.trim()) {
+        const newHerb = await addHerb.mutateAsync({ name: herbPickerSearch.trim() });
+        resolvedHerbId = newHerb.id;
+      }
+      if (!resolvedHerbId) return;
+
+      const herbRecord = herbs.find(h => h.id === resolvedHerbId);
+      const herbThreshold = herbRecord?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const status = calcBulkStatus(selectedQuantity, herbThreshold);
+      const existing = clinicByHerbId.get(resolvedHerbId);
+
+      if (existing) {
+        await updateInventory.mutateAsync({
+          id: existing.id,
+          status,
+          quantity: selectedQuantity,
+          notes: selectedNotes || null,
+        });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: resolvedHerbId,
+          location: 'bulk_clinic',
+          status,
+          quantity: selectedQuantity,
+          notes: selectedNotes || undefined,
+        });
+      }
+
+      setSelectedHerbId('');
+      setSelectedQuantity(1);
+      setSelectedNotes('');
+      setHerbPickerSearch('');
+      setIsAddDialogOpen(false);
+      toast.success(existing ? 'Clinic Bulk updated' : 'Herb added to Clinic Bulk');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save');
+    }
+  };
+
+  const handleAddDialogClose = (open: boolean) => {
+    setIsAddDialogOpen(open);
+    if (!open) {
+      setSelectedHerbId('');
+      setSelectedQuantity(1);
+      setSelectedNotes('');
+      setHerbPickerSearch('');
+    }
+  };
+
+  const selectedHerb = herbs.find(h => h.id === selectedHerbId);
+  const selectedHerbExistingClinic = selectedHerbId ? clinicByHerbId.get(selectedHerbId) : undefined;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3 justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onExit}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
+            <Stethoscope className="h-5 w-5 text-green-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Clinic Bulk</h2>
+            <p className="text-sm text-muted-foreground">
+              {clinicInventory.length} herb{clinicInventory.length !== 1 ? 's' : ''} kept at the clinic
+            </p>
+          </div>
+        </div>
+        <Dialog open={isAddDialogOpen} onOpenChange={handleAddDialogClose}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Herb
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="shrink-0">
+              <DialogTitle>Add to Clinic Bulk</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4 overflow-y-auto pr-1">
+              <div className="space-y-2">
+                <Label>Herb</Label>
+                <Popover open={herbPickerOpen} onOpenChange={setHerbPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={herbPickerOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {selectedHerb
+                        ? getDisplayName(selectedHerb)
+                        : herbPickerSearch.trim()
+                        ? `"${herbPickerSearch.trim()}" (new herb)`
+                        : "Search or select an herb..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" side="bottom">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Type to search or add new herb..."
+                        value={herbPickerSearch}
+                        onValueChange={(v) => {
+                          setHerbPickerSearch(v);
+                          if (selectedHerbId) setSelectedHerbId('');
+                        }}
+                      />
+                      <CommandList className="max-h-48 overflow-y-auto">
+                        {(() => {
+                          const q = herbPickerSearch.toLowerCase();
+                          const filteredHerbOptions = herbs.filter(h =>
+                            !q ||
+                            h.name.toLowerCase().includes(q) ||
+                            h.common_name?.toLowerCase().includes(q) ||
+                            h.latin_name?.toLowerCase().includes(q) ||
+                            h.pinyin_name?.toLowerCase().includes(q)
+                          );
+                          return (
+                            <>
+                              {filteredHerbOptions.length === 0 && !herbPickerSearch.trim() && (
+                                <CommandEmpty>No herbs found.</CommandEmpty>
+                              )}
+                              <CommandGroup>
+                                {filteredHerbOptions.map((herb) => {
+                                  const existingClinic = clinicByHerbId.get(herb.id);
+                                  return (
+                                    <CommandItem
+                                      key={herb.id}
+                                      value={herb.id}
+                                      onSelect={() => {
+                                        setSelectedHerbId(herb.id);
+                                        setHerbPickerSearch('');
+                                        if (existingClinic) setSelectedQuantity(existingClinic.quantity ?? 1);
+                                        setHerbPickerOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          selectedHerbId === herb.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {getDisplayName(herb)}
+                                      {[herb.common_name, herb.latin_name, herb.pinyin_name]
+                                        .filter((n): n is string => !!n && n !== getDisplayName(herb))
+                                        .map((n, i) => (
+                                          <span key={i} className="ml-1 text-muted-foreground text-xs">({n})</span>
+                                        ))}
+                                      {existingClinic && (
+                                        <span className="ml-auto text-xs text-muted-foreground">{formatLbs(existingClinic.quantity ?? 1)} lb</span>
+                                      )}
+                                    </CommandItem>
+                                  );
+                                })}
+                                {herbPickerSearch.trim() && filteredHerbOptions.every(h => h.name.toLowerCase() !== herbPickerSearch.toLowerCase()) && (
+                                  <CommandItem
+                                    value="__create__"
+                                    onSelect={() => {
+                                      setSelectedHerbId('');
+                                      setHerbPickerOpen(false);
+                                    }}
+                                  >
+                                    <Plus className="mr-2 h-4 w-4 text-primary" />
+                                    <span>Create <strong>"{herbPickerSearch.trim()}"</strong> as new herb</span>
+                                  </CommandItem>
+                                )}
+                              </CommandGroup>
+                            </>
+                          );
+                        })()}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Quantity (lbs)</Label>
+                <Select value={String(selectedQuantity)} onValueChange={(v) => setSelectedQuantity(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  placeholder="Add any notes about this herb..."
+                  value={selectedNotes}
+                  onChange={(e) => setSelectedNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+
+              {selectedHerbExistingClinic && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  This herb already has {formatLbs(selectedHerbExistingClinic.quantity ?? 0)} lb in Clinic Bulk — saving will update it.
+                </p>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={handleAddHerb}
+                disabled={(!selectedHerbId && !herbPickerSearch.trim()) || addInventory.isPending || updateInventory.isPending || addHerb.isPending}
+              >
+                {(addInventory.isPending || updateInventory.isPending || addHerb.isPending)
+                  ? 'Saving...'
+                  : selectedHerbExistingClinic
+                  ? 'Update Clinic Bulk'
+                  : !selectedHerbId && herbPickerSearch.trim()
+                  ? `Add "${herbPickerSearch.trim()}" to Clinic Bulk`
+                  : 'Add to Clinic Bulk'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search clinic bulk herbs..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      </div>
+
+      {/* Transfer back to Bulk dialog */}
+      <Dialog open={!!transferItem} onOpenChange={(open) => { if (!open) { setTransferItem(null); setTransferQty(1); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-amber-600" />
+              Move back to Bulk
+            </DialogTitle>
+          </DialogHeader>
+          {transferItem && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {transferItem.herbs ? getDisplayName(transferItem.herbs) : ''} — {formatLbs(Number(transferItem.quantity ?? 0))} lb available in Clinic Bulk
+              </p>
+              <div className="space-y-2">
+                <Label>Amount to move (lbs)</Label>
+                <Select value={String(transferQty)} onValueChange={(v) => setTransferQty(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.filter(lb => lb <= Number(transferItem.quantity ?? 0)).map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setTransferItem(null); setTransferQty(1); }}>Cancel</Button>
+                <Button onClick={handleTransferToBulk} disabled={updateInventory.isPending || addInventory.isPending}>
+                  Move to Bulk
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editingId} onOpenChange={(open) => { if (!open) setEditingId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Clinic Bulk</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const item = clinicInventory.find(i => i.id === editingId);
+            if (!item) return null;
+            return (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Quantity (lbs)</Label>
+                  <Select value={String(editQuantity)} onValueChange={(v) => setEditQuantity(Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Out (0 lb)</SelectItem>
+                      {LB_OPTIONS.map(lb => (
+                        <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes (optional)</Label>
+                  <Textarea placeholder="Notes..." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={2} />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setEditingId(null)}>Cancel</Button>
+                  <Button onClick={() => handleSaveEdit(item)}>Save</Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Grid */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic col-span-full">
+            {search ? 'No matching herbs' : 'No herbs in Clinic Bulk yet. Move some over from Bulk to get started!'}
+          </p>
+        ) : (
+          filtered.map(item => {
+            const qty = Number(item.quantity ?? 0);
+            const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+            const isLow = qty > 0 && qty <= herbThreshold;
+            const isOut = qty <= 0;
+            return (
+              <Card
+                key={item.id}
+                className={cn(
+                  "transition-colors",
+                  isOut ? "border-red-500/30 bg-red-500/5"
+                  : isLow ? "border-yellow-500/30 bg-yellow-500/5"
+                  : "border-green-500/30 bg-green-500/5"
+                )}
+              >
+                <CardContent className="px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      {item.herbs && (
+                        <p className="text-sm font-medium truncate leading-tight">{getDisplayName(item.herbs)}</p>
+                      )}
+                    </div>
+                    <LbsBadge qty={qty} lowThreshold={herbThreshold} />
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleOpenTransfer(item)} disabled={qty <= 0} title="Move back to Bulk">
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleStartEdit(item)}>
+                      <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                  {item.notes && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{item.notes}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );
