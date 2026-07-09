@@ -42,29 +42,16 @@ import {
 } from '@/hooks/useInventory';
 import { useBulkBatches, useReceiveBulkBatch, BulkBatch } from '@/hooks/useBulkBatches';
 import { HERB_LIST } from '@/lib/herbCorrection';
+import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 
-// Standard lb increments available in the UI
-const LB_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
-// Default low-stock threshold when herb has no custom value
-const DEFAULT_LOW_THRESHOLD = 0.25; // lbs
 // Available per-herb low threshold options
 const THRESHOLD_OPTIONS = [0.25, 0.5] as const;
 const NONE_VALUE = '__none__';
-
-function formatLbs(qty: number): string {
-  return String(qty);
-}
-
-function calcBulkStatus(qty: number, lowThreshold: number): 'out' | 'low' | 'full' {
-  if (qty <= 0) return 'out';
-  if (qty <= lowThreshold) return 'low';
-  return 'full';
-}
 
 interface BulkInventorySectionProps {
   showBatchInfo?: boolean;

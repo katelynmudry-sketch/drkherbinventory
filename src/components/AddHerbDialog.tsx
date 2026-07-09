@@ -19,15 +19,16 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
 import { toast } from 'sonner';
 
 const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }[]> = {
   clinic:        [{ value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
   backstock:     [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }],
   tincture:      [],
-  bulk:          [{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
-  bulk_backstock:[{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
-  bulk_clinic:   [{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
+  bulk:          [],
+  bulk_backstock:[],
+  bulk_clinic:   [],
 };
 
 const DEFAULT_STATUS: Record<InventoryLocation, string> = {
@@ -37,6 +38,18 @@ const DEFAULT_STATUS: Record<InventoryLocation, string> = {
   bulk:          'full',
   bulk_backstock:'full',
   bulk_clinic:   'full',
+};
+
+// Bulk-style locations track an actual lb quantity instead of a full/low/out status
+const LB_LOCATIONS: ReadonlySet<InventoryLocation> = new Set(['bulk', 'bulk_backstock', 'bulk_clinic']);
+
+const LOCATION_LABELS: Record<InventoryLocation, string> = {
+  clinic: 'Clinic',
+  backstock: 'Backstock',
+  tincture: 'Tincture',
+  bulk: 'Bulk',
+  bulk_backstock: 'Bulk Backstock',
+  bulk_clinic: 'Clinic Bulk',
 };
 
 interface StagedHerb {
@@ -49,6 +62,7 @@ export function AddHerbDialog() {
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState<InventoryLocation>('clinic');
   const [status, setStatus] = useState<string>(DEFAULT_STATUS['clinic']);
+  const [quantity, setQuantity] = useState(1);
   const [staged, setStaged] = useState<StagedHerb[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -56,9 +70,12 @@ export function AddHerbDialog() {
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
 
+  const isLbLocation = LB_LOCATIONS.has(location);
+
   const handleLocationChange = (v: InventoryLocation) => {
     setLocation(v);
     setStatus(DEFAULT_STATUS[v]);
+    setQuantity(1);
   };
 
   const filteredHerbs = useMemo(() => {
@@ -103,20 +120,30 @@ export function AddHerbDialog() {
           herb = await addHerb.mutateAsync({ name: entry.name });
         }
 
-        const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
-        const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
+        if (isLbLocation) {
+          const herbThreshold = herb.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+          await addInventory.mutateAsync({
+            herb_id: herb.id,
+            location,
+            status: calcBulkStatus(quantity, herbThreshold),
+            quantity,
+          });
+        } else {
+          const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
+          const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
 
-        await addInventory.mutateAsync({
-          herb_id: herb.id,
-          location,
-          status: inventoryStatus,
-          ...(notes ? { notes } : {}),
-        });
+          await addInventory.mutateAsync({
+            herb_id: herb.id,
+            location,
+            status: inventoryStatus,
+            ...(notes ? { notes } : {}),
+          });
+        }
 
         successCount++;
       } catch (error: any) {
         if (error?.code === '23505') {
-          toast.error(`${entry.name} already exists in ${location}`);
+          toast.error(`${entry.name} already exists in ${LOCATION_LABELS[location]}`);
         } else {
           toast.error(`Failed to add ${entry.name}`);
           console.error(error);
@@ -125,12 +152,13 @@ export function AddHerbDialog() {
     }
 
     if (successCount > 0) {
-      toast.success(`Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${location}`);
+      toast.success(`Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`);
     }
 
     setStaged([]);
     setSearch('');
     setStatus(DEFAULT_STATUS[location]);
+    setQuantity(1);
     setIsProcessing(false);
     setIsOpen(false);
   };
@@ -141,6 +169,7 @@ export function AddHerbDialog() {
       setSearch('');
       setStaged([]);
       setStatus(DEFAULT_STATUS[location]);
+      setQuantity(1);
     }
   };
 
@@ -181,8 +210,22 @@ export function AddHerbDialog() {
             </Select>
           </div>
 
-          {/* Status */}
-          {location !== 'tincture' && (
+          {/* Status / Quantity */}
+          {isLbLocation ? (
+            <div className="space-y-2">
+              <Label>Quantity (lbs)</Label>
+              <Select value={String(quantity)} onValueChange={(v) => setQuantity(Number(v))}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  {LB_OPTIONS.map(lb => (
+                    <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : location !== 'tincture' && (
             <div className="space-y-2">
               <Label>{location === 'backstock' ? 'Size' : 'Status'}</Label>
               <Select value={status} onValueChange={setStatus}>
@@ -288,7 +331,7 @@ export function AddHerbDialog() {
               ? 'Adding...'
               : staged.length === 0
               ? 'Select herbs above'
-              : `Add ${staged.length} herb${staged.length > 1 ? 's' : ''} to ${location}`}
+              : `Add ${staged.length} herb${staged.length > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`}
           </Button>
         </div>
       </DialogContent>
