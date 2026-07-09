@@ -27,6 +27,7 @@ const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }
   tincture:      [],
   bulk:          [{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
   bulk_backstock:[{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
+  bulk_clinic:   [{ value: 'full', label: 'Full' }, { value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
 };
 
 const DEFAULT_STATUS: Record<InventoryLocation, string> = {
@@ -35,6 +36,7 @@ const DEFAULT_STATUS: Record<InventoryLocation, string> = {
   tincture:      'full',
   bulk:          'full',
   bulk_backstock:'full',
+  bulk_clinic:   'full',
 };
 
 interface StagedHerb {

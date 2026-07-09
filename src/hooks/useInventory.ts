@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 
-export type InventoryLocation = 'backstock' | 'tincture' | 'clinic' | 'bulk' | 'bulk_backstock';
+export type InventoryLocation = 'backstock' | 'tincture' | 'clinic' | 'bulk' | 'bulk_backstock' | 'bulk_clinic';
 export type InventoryStatus = 'full' | 'low' | 'out' | 'ordered';
 
 export interface Herb {

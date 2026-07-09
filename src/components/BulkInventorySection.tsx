@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown, ClipboardList, Archive } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Filter, Search, Package2, ChevronsUpDown, ClipboardList, Archive, Stethoscope, ArrowRightLeft } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,6 +73,7 @@ interface BulkInventorySectionProps {
 export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySectionProps = {}) {
   const { data: inventory = [], isLoading } = useInventory('bulk');
   const { data: backstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: clinicBulkInventory = [] } = useInventory('bulk_clinic');
   const { data: herbs = [] } = useHerbs();
   const { data: bulkBatches = [] } = useBulkBatches();
   const addInventory = useAddInventory();
@@ -92,6 +93,9 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   }, [bulkBatches]);
 
   const [stockCountMode, setStockCountMode] = useState(false);
+  const [clinicBulkMode, setClinicBulkMode] = useState(false);
+  const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
+  const [transferQty, setTransferQty] = useState(1);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedHerbId, setSelectedHerbId] = useState('');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
@@ -120,6 +124,15 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
     }
     return map;
   }, [backstockInventory]);
+
+  // Build a lookup: herb_id → clinic bulk inventory item
+  const clinicBulkByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of clinicBulkInventory) {
+      map.set(item.herb_id, item);
+    }
+    return map;
+  }, [clinicBulkInventory]);
 
   const handleAdd = async () => {
     if (!selectedHerbId && !herbPickerSearch.trim()) return;
@@ -257,6 +270,49 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
     await deleteInventory.mutateAsync(id);
   };
 
+  const handleOpenTransfer = (item: InventoryItem) => {
+    const maxQty = Number(item.quantity ?? 0);
+    if (maxQty <= 0) return;
+    setTransferItem(item);
+    setTransferQty(Math.min(1, maxQty));
+  };
+
+  const handleTransferToClinic = async () => {
+    if (!transferItem) return;
+    const currentQty = Number(transferItem.quantity ?? 0);
+    if (transferQty <= 0 || transferQty > currentQty) return;
+
+    try {
+      const herbThreshold = herbs.find(h => h.id === transferItem.herb_id)?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const newBulkQty = currentQty - transferQty;
+      await updateInventory.mutateAsync({
+        id: transferItem.id,
+        quantity: newBulkQty,
+        status: calcBulkStatus(newBulkQty, herbThreshold),
+      });
+
+      const existingClinic = clinicBulkByHerbId.get(transferItem.herb_id);
+      const newClinicQty = (existingClinic ? Number(existingClinic.quantity ?? 0) : 0) + transferQty;
+      const clinicStatus = calcBulkStatus(newClinicQty, herbThreshold);
+      if (existingClinic) {
+        await updateInventory.mutateAsync({ id: existingClinic.id, quantity: newClinicQty, status: clinicStatus });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: transferItem.herb_id,
+          location: 'bulk_clinic',
+          quantity: newClinicQty,
+          status: clinicStatus,
+        });
+      }
+
+      toast.success(`Moved ${formatLbs(transferQty)} lb to Clinic Bulk`);
+      setTransferItem(null);
+      setTransferQty(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to move to Clinic Bulk');
+    }
+  };
+
   // Build lookup for existing bulk records by herb_id (for upsert logic)
   const bulkByHerbId = useMemo(() => {
     const map = new Map<string, InventoryItem>();
@@ -313,6 +369,17 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
     );
   }
 
+  if (clinicBulkMode) {
+    return (
+      <ClinicBulkView
+        clinicInventory={clinicBulkInventory}
+        bulkInventory={inventory}
+        herbs={herbs}
+        onExit={() => setClinicBulkMode(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Header with stats */}
@@ -329,6 +396,14 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            className="gap-2 flex-1 sm:flex-none"
+            onClick={() => setClinicBulkMode(true)}
+          >
+            <Stethoscope className="h-4 w-4" />
+            Clinic Bulk{clinicBulkInventory.length > 0 && ` (${clinicBulkInventory.length})`}
+          </Button>
           <Button
             variant="outline"
             className="gap-2 flex-1 sm:flex-none"
@@ -529,6 +604,49 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
         </div>
       </div>
 
+      {/* Transfer to Clinic Bulk dialog */}
+      <Dialog open={!!transferItem} onOpenChange={(open) => { if (!open) { setTransferItem(null); setTransferQty(1); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Stethoscope className="h-4 w-4 text-green-600" />
+              Move to Clinic Bulk
+            </DialogTitle>
+          </DialogHeader>
+          {transferItem && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {transferItem.herbs ? getDisplayName(transferItem.herbs) : ''} — {formatLbs(Number(transferItem.quantity ?? 0))} lb available in Bulk
+              </p>
+              <div className="space-y-2">
+                <Label>Amount to move (lbs)</Label>
+                <Select
+                  value={String(transferQty)}
+                  onValueChange={(v) => setTransferQty(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.filter(lb => lb <= Number(transferItem.quantity ?? 0)).map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>
+                        {formatLbs(lb)} lb
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setTransferItem(null); setTransferQty(1); }}>Cancel</Button>
+                <Button onClick={handleTransferToClinic} disabled={updateInventory.isPending || addInventory.isPending}>
+                  Move to Clinic Bulk
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Search and filter bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
@@ -602,6 +720,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                 editPreferredName={editPreferredName}
                 editLowThreshold={editLowThreshold}
                 onDelete={() => handleDelete(item.id)}
+                onTransferToClinic={() => handleOpenTransfer(item)}
               />
             );
           })
@@ -638,6 +757,7 @@ interface BulkItemCardProps {
   onLowThresholdChange: (val: number) => void;
   onNotesChange: (notes: string) => void;
   onDelete: () => void;
+  onTransferToClinic: () => void;
 }
 
 function BulkItemCard({
@@ -667,6 +787,7 @@ function BulkItemCard({
   onLowThresholdChange,
   onNotesChange,
   onDelete,
+  onTransferToClinic,
 }: BulkItemCardProps) {
   const qty = Number(item.quantity ?? 1);
   const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
@@ -851,6 +972,16 @@ function BulkItemCard({
             {/* Quantity badge */}
             <LbsBadge qty={qty} lowThreshold={herbThreshold} isOrdered={isOrdered} />
             {/* Actions */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              onClick={onTransferToClinic}
+              disabled={qty <= 0}
+              title="Move to Clinic Bulk"
+            >
+              <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
             <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={onStartEdit}>
               <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
@@ -1266,6 +1397,276 @@ function BulkStockCountView({
             {bulkUpsert.isPending ? 'Saving...' : 'Save Stock Count'}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clinic Bulk View ────────────────────────────────────────────────────────
+// A smaller subset of bulk herbs kept on hand at the clinic itself. Herbs get
+// here by being moved (transferred) from the main Bulk storage location.
+
+function ClinicBulkView({
+  clinicInventory,
+  bulkInventory,
+  herbs,
+  onExit,
+}: {
+  clinicInventory: InventoryItem[];
+  bulkInventory: InventoryItem[];
+  herbs: Herb[];
+  onExit: () => void;
+}) {
+  const updateInventory = useUpdateInventory();
+  const addInventory = useAddInventory();
+  const deleteInventory = useDeleteInventory();
+
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editQuantity, setEditQuantity] = useState(1);
+  const [editNotes, setEditNotes] = useState('');
+  const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
+  const [transferQty, setTransferQty] = useState(1);
+
+  const bulkByHerbId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    for (const item of bulkInventory) map.set(item.herb_id, item);
+    return map;
+  }, [bulkInventory]);
+
+  const filtered = useMemo(() => {
+    return clinicInventory
+      .filter(item => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (
+          item.herbs?.name?.toLowerCase().includes(q) ||
+          item.herbs?.common_name?.toLowerCase().includes(q) ||
+          item.herbs?.latin_name?.toLowerCase().includes(q) ||
+          item.herbs?.pinyin_name?.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const nameA = a.herbs?.name?.toLowerCase() || '';
+        const nameB = b.herbs?.name?.toLowerCase() || '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [clinicInventory, search]);
+
+  const handleStartEdit = (item: InventoryItem) => {
+    setEditingId(item.id);
+    setEditQuantity(Number(item.quantity ?? 1));
+    setEditNotes(item.notes || '');
+  };
+
+  const handleSaveEdit = async (item: InventoryItem) => {
+    try {
+      const herbThreshold = item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      await updateInventory.mutateAsync({
+        id: item.id,
+        quantity: editQuantity,
+        status: calcBulkStatus(editQuantity, herbThreshold),
+        notes: editNotes || null,
+      });
+      setEditingId(null);
+      toast.success('Saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save changes');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await deleteInventory.mutateAsync(id);
+  };
+
+  const handleOpenTransfer = (item: InventoryItem) => {
+    const maxQty = Number(item.quantity ?? 0);
+    if (maxQty <= 0) return;
+    setTransferItem(item);
+    setTransferQty(Math.min(1, maxQty));
+  };
+
+  const handleTransferToBulk = async () => {
+    if (!transferItem) return;
+    const currentQty = Number(transferItem.quantity ?? 0);
+    if (transferQty <= 0 || transferQty > currentQty) return;
+
+    try {
+      const herbThreshold = transferItem.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      const newClinicQty = currentQty - transferQty;
+      await updateInventory.mutateAsync({
+        id: transferItem.id,
+        quantity: newClinicQty,
+        status: calcBulkStatus(newClinicQty, herbThreshold),
+      });
+
+      const existingBulk = bulkByHerbId.get(transferItem.herb_id);
+      const newBulkQty = (existingBulk ? Number(existingBulk.quantity ?? 0) : 0) + transferQty;
+      const bulkStatus = calcBulkStatus(newBulkQty, herbThreshold);
+      if (existingBulk) {
+        await updateInventory.mutateAsync({ id: existingBulk.id, quantity: newBulkQty, status: bulkStatus });
+      } else {
+        await addInventory.mutateAsync({
+          herb_id: transferItem.herb_id,
+          location: 'bulk',
+          quantity: newBulkQty,
+          status: bulkStatus,
+        });
+      }
+
+      toast.success(`Moved ${formatLbs(transferQty)} lb back to Bulk`);
+      setTransferItem(null);
+      setTransferQty(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to move to Bulk');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={onExit}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
+          <Stethoscope className="h-5 w-5 text-green-600" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">Clinic Bulk</h2>
+          <p className="text-sm text-muted-foreground">
+            {clinicInventory.length} herb{clinicInventory.length !== 1 ? 's' : ''} kept at the clinic
+          </p>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search clinic bulk herbs..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      </div>
+
+      {/* Transfer back to Bulk dialog */}
+      <Dialog open={!!transferItem} onOpenChange={(open) => { if (!open) { setTransferItem(null); setTransferQty(1); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-amber-600" />
+              Move back to Bulk
+            </DialogTitle>
+          </DialogHeader>
+          {transferItem && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {transferItem.herbs ? getDisplayName(transferItem.herbs) : ''} — {formatLbs(Number(transferItem.quantity ?? 0))} lb available in Clinic Bulk
+              </p>
+              <div className="space-y-2">
+                <Label>Amount to move (lbs)</Label>
+                <Select value={String(transferQty)} onValueChange={(v) => setTransferQty(Number(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LB_OPTIONS.filter(lb => lb <= Number(transferItem.quantity ?? 0)).map(lb => (
+                      <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setTransferItem(null); setTransferQty(1); }}>Cancel</Button>
+                <Button onClick={handleTransferToBulk} disabled={updateInventory.isPending || addInventory.isPending}>
+                  Move to Bulk
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editingId} onOpenChange={(open) => { if (!open) setEditingId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Clinic Bulk</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const item = clinicInventory.find(i => i.id === editingId);
+            if (!item) return null;
+            return (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Quantity (lbs)</Label>
+                  <Select value={String(editQuantity)} onValueChange={(v) => setEditQuantity(Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Out (0 lb)</SelectItem>
+                      {LB_OPTIONS.map(lb => (
+                        <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes (optional)</Label>
+                  <Textarea placeholder="Notes..." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={2} />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setEditingId(null)}>Cancel</Button>
+                  <Button onClick={() => handleSaveEdit(item)}>Save</Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Grid */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic col-span-full">
+            {search ? 'No matching herbs' : 'No herbs in Clinic Bulk yet. Move some over from Bulk to get started!'}
+          </p>
+        ) : (
+          filtered.map(item => {
+            const qty = Number(item.quantity ?? 0);
+            const herbThreshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+            const isLow = qty > 0 && qty <= herbThreshold;
+            const isOut = qty <= 0;
+            return (
+              <Card
+                key={item.id}
+                className={cn(
+                  "transition-colors",
+                  isOut ? "border-red-500/30 bg-red-500/5"
+                  : isLow ? "border-yellow-500/30 bg-yellow-500/5"
+                  : "border-green-500/30 bg-green-500/5"
+                )}
+              >
+                <CardContent className="px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      {item.herbs && (
+                        <p className="text-sm font-medium truncate leading-tight">{getDisplayName(item.herbs)}</p>
+                      )}
+                    </div>
+                    <LbsBadge qty={qty} lowThreshold={herbThreshold} />
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleOpenTransfer(item)} disabled={qty <= 0} title="Move back to Bulk">
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleStartEdit(item)}>
+                      <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => handleDelete(item.id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                  {item.notes && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{item.notes}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );
