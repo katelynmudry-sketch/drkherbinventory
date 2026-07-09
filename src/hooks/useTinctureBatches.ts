@@ -10,6 +10,7 @@ export interface TinctureBatch {
   batch_date: string;
   status: 'macerating' | 'active' | 'archived';
   pressed_date: string | null;
+  bottle_count: number | null;
   notes: string | null;
   bulk_inventory_id: string | null;
   bulk_batch_id: string | null;
@@ -85,9 +86,18 @@ export function useCreateTinctureBatch() {
       batch_date?: string;
       notes?: string;
       bulk_inventory_id?: string;
+      bottle_count?: number;
+      // 'macerating' (default) for the normal voice-driven flow, or 'active' for
+      // manually logging a batch that's already pressed/ready (e.g. backdated
+      // historical batches) — skips bulk lot consumption since there's nothing
+      // currently macerating to tie a lot to.
+      status?: 'macerating' | 'active';
+      pressed_date?: string;
     }): Promise<TinctureBatch> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      const status = input.status ?? 'macerating';
 
       // 1. Generate batch number via DB function
       const { data: batchNumber, error: fnError } = await supabase
@@ -100,15 +110,18 @@ export function useCreateTinctureBatch() {
       // 2. Find the herb's current available bulk lot — that lot is the
       // source for this tincture batch (most-recent-arrival convention,
       // same as how pressing tags backstock with the most recent batch).
-      const { data: bulkLot } = await supabase
-        .from('bulk_batches')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('herb_id', input.herb_id)
-        .eq('status', 'available')
-        .maybeSingle();
+      // Skipped for manually-logged already-pressed batches.
+      const { data: bulkLot } = status === 'macerating'
+        ? await supabase
+            .from('bulk_batches')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('herb_id', input.herb_id)
+            .eq('status', 'available')
+            .maybeSingle()
+        : { data: null };
 
-      // 3. Insert new batch as 'macerating' (not yet pressed)
+      // 3. Insert new batch
       const { data, error } = await supabase
         .from('tincture_batches')
         .insert({
@@ -116,7 +129,9 @@ export function useCreateTinctureBatch() {
           herb_id: input.herb_id,
           batch_number: batchNumber as string,
           batch_date: input.batch_date ?? new Date().toISOString().split('T')[0],
-          status: 'macerating',
+          status,
+          pressed_date: status === 'active' ? (input.pressed_date ?? input.batch_date ?? new Date().toISOString().split('T')[0]) : null,
+          bottle_count: input.bottle_count ?? null,
           notes: input.notes ?? null,
           bulk_inventory_id: input.bulk_inventory_id ?? null,
           bulk_batch_id: bulkLot?.id ?? null,
@@ -132,6 +147,17 @@ export function useCreateTinctureBatch() {
           .update({ status: 'depleted' })
           .eq('id', bulkLot.id);
       }
+
+      // 5. Link the batch to any existing tincture inventory row for this herb
+      //    so current_batch_id is always populated (enables batch number display
+      //    and correct press resolution). No-op if no inventory row exists yet
+      //    (e.g. the 'already pressed' manual entry path).
+      await supabase
+        .from('inventory')
+        .update({ current_batch_id: (data as TinctureBatch).id })
+        .eq('user_id', user.id)
+        .eq('herb_id', input.herb_id)
+        .eq('location', 'tincture');
 
       return data as TinctureBatch;
     },
@@ -200,6 +226,32 @@ export function usePressBatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+// Update a batch's editable fields (bottle count, dates, notes) — used by the
+// manual bottle-count stepper and to decrement bottle_count when bottles are
+// pressed into Clinic/Backstock.
+export function useUpdateTinctureBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...fields }: {
+      id: string;
+      bottle_count?: number | null;
+      batch_date?: string;
+      pressed_date?: string | null;
+      notes?: string | null;
+    }): Promise<void> => {
+      const { error } = await supabase
+        .from('tincture_batches')
+        .update(fields)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
     },
   });
 }

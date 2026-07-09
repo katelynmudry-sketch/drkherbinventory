@@ -34,7 +34,7 @@ const ACTION_ICON: Record<VoiceAssistantAction['type'], typeof Plus> = {
 };
 
 export function VoiceAssistant({ activeTab = 'tinctures' }: VoiceAssistantProps) {
-  const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
+  const { transcript, alternatives, isListening, isSupported, error: voiceError, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const { data: existingHerbs } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
@@ -53,6 +53,13 @@ export function VoiceAssistant({ activeTab = 'tinctures' }: VoiceAssistantProps)
     () => buildExtraNamesFromHerbs(existingHerbs ?? []),
     [existingHerbs]
   );
+
+  // Surface insecure-context / network failures from the shared voice hook
+  useEffect(() => {
+    if (voiceError) {
+      toast.error(voiceError);
+    }
+  }, [voiceError]);
 
   useEffect(() => {
     if (transcript && transcript !== lastTranscript && !isListening) {

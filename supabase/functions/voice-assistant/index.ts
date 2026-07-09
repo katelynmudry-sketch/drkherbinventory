@@ -59,24 +59,7 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = getServiceClient();
 
-    // 1. Tier check — AI Assistant is a Pro-tier feature.
-    const { data: subscription } = await serviceClient
-      .from('subscriptions')
-      .select('plan_tier, status')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const isPro = subscription?.plan_tier === 'pro'
-      && (subscription?.status === 'active' || subscription?.status === 'trialing');
-
-    if (!isPro) {
-      return jsonResponse({
-        actions: [],
-        spokenResponse: 'The AI Assistant is a Pro feature. Upgrade your plan to use it.',
-      }, 403);
-    }
-
-    // 2. Rate limit — per-user daily cap on Claude calls.
+    // 1. Rate limit — per-user daily cap on Claude calls.
     const dailyLimit = Number(Deno.env.get('VOICE_ASSISTANT_DAILY_LIMIT') ?? DEFAULT_DAILY_LIMIT);
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
@@ -94,7 +77,7 @@ Deno.serve(async (req: Request) => {
       }, 429);
     }
 
-    // 3. Grounding data — this user's herbs + current inventory snapshot (RLS-scoped).
+    // 2. Grounding data — this user's herbs + current inventory snapshot (RLS-scoped).
     const { data: herbs = [] } = await userClient
       .from('herbs')
       .select('id, name, common_name, latin_name, pinyin_name');
@@ -125,7 +108,7 @@ Deno.serve(async (req: Request) => {
     }
     const inventorySummaryText = inventorySummaryLines.join('\n') || '(no inventory recorded yet)';
 
-    // 4. System prompt.
+    // 3. System prompt.
     const systemPrompt = `You are a voice assistant for a herbal inventory management app used in a clinic.
 
 The user spoke a voice command which may be a request to update inventory, a question about current inventory, or both at once.
@@ -150,7 +133,7 @@ Respond ONLY by calling the inventory_response tool. For any inventory update me
       userMessage += `\n\nSpeech-to-text may have misheard part of this. Alternative interpretations: ${alternatives.slice(1).map((a) => `"${a}"`).join(', ')}`;
     }
 
-    // 5. Call Claude with forced tool-use for structured output.
+    // 4. Call Claude with forced tool-use for structured output.
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!anthropicKey) {
       throw new Error('ANTHROPIC_API_KEY is not configured');
@@ -237,7 +220,7 @@ Respond ONLY by calling the inventory_response tool. For any inventory update me
       };
     }
 
-    // 6. Log usage (service role, regardless of success).
+    // 5. Log usage (service role, regardless of success).
     await serviceClient.from('voice_api_usage').insert({
       user_id: user.id,
       model: MODEL,

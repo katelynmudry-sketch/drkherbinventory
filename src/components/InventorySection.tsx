@@ -28,8 +28,8 @@ import {
   InventoryItem,
   getDisplayName,
 } from '@/hooks/useInventory';
-import { usePressBatch, useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
-import { checkHerbAvailability, AvailabilityInfo } from '@/hooks/useInventoryCheck';
+import { usePressBatch, useTinctureBatches, useUpdateTinctureBatch, TinctureBatch } from '@/hooks/useTinctureBatches';
+import { checkHerbAvailability, findMatchingInventoryItem, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
@@ -48,6 +48,7 @@ interface InventorySectionProps {
 export function InventorySection({ location, title, icon, description, searchQuery = '', showBatchInfo = false }: InventorySectionProps) {
   const { data: inventory = [], isLoading } = useInventory(location);
   const { data: backstockInventory = [] } = useInventory('backstock');
+  const { data: bulkInventory = [] } = useInventory('bulk');
   const { data: herbs = [] } = useHerbs();
   const { data: tinctureBatches = [] } = useTinctureBatches();
   const addInventory = useAddInventory();
@@ -55,6 +56,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const pressBatch = usePressBatch();
+  const updateTinctureBatch = useUpdateTinctureBatch();
   const setInventoryStatus = useSetInventoryStatusForHerb();
 
   // Maps for batch badge lookup (only used when showBatchInfo is on)
@@ -70,28 +72,16 @@ export function InventorySection({ location, title, icon, description, searchQue
     return { activeBatchByHerbId: active, maceratingBatchByHerbId: macerating, batchById: byId };
   }, [tinctureBatches]);
 
-  // herb_ids AND display names that have usable (non-out) backstock
-  const { backstockHerbIds, backstockNames } = useMemo(() => {
-    const usable = backstockInventory.filter(i => i.status !== 'out');
-    return {
-      backstockHerbIds: new Set(usable.map(i => i.herb_id)),
-      backstockNames: new Set(usable.map(i => i.herbs ? getDisplayName(i.herbs).toLowerCase().trim() : '').filter(Boolean)),
-    };
-  }, [backstockInventory]);
-
   const herbHasBackstock = (item: InventoryItem) => {
-    if (backstockHerbIds.has(item.herb_id)) return true;
-    if (item.herbs) {
-      const name = getDisplayName(item.herbs).toLowerCase().trim();
-      if (backstockNames.has(name)) return true;
-      // partial match � e.g. "bupleurum" in backstock names that start with it
-      for (const n of backstockNames) {
-        if (n.startsWith(name) || name.startsWith(n)) return true;
-        // Handle typos: match if first 6 chars agree (e.g. "buplureum" vs "bupleurum")
-        if (name.length >= 5 && n.length >= 5 && name.slice(0, 6) === n.slice(0, 6)) return true;
-      }
-    }
-    return false;
+    const match = findMatchingInventoryItem(item, backstockInventory);
+    return !!match && match.status !== 'out';
+  };
+
+  // Clinic only: is this herb's matching bulk stock out? (no raw material to make a tincture from)
+  const herbIsBulkOut = (item: InventoryItem) => {
+    if (item.status === 'full') return false;
+    const match = findMatchingInventoryItem(item, bulkInventory);
+    return match?.status === 'out';
   };
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -209,18 +199,30 @@ export function InventorySection({ location, title, icon, description, searchQue
     const item = pressItem;
     if (!item) return;
     try {
-      if (item.current_batch_id) {
-        await pressBatch.mutateAsync(item.current_batch_id);
+      const batch = maceratingBatchByHerbId.get(item.herb_id)
+        ?? (item.current_batch_id ? batchById.get(item.current_batch_id) ?? null : null);
+      if (batch) {
+        await pressBatch.mutateAsync(batch.id);
       }
       const destinations: string[] = [];
+      let bottlesUsed = 0;
       if (pressAlsoClinic) {
         await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
         destinations.push('Clinic as Full');
+        bottlesUsed++;
       }
       if (pressAlsoBackstock) {
         const size = pressBackstockSize && pressBackstockSize !== 'untagged' ? pressBackstockSize : null;
         await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size });
         destinations.push('Backstock');
+        bottlesUsed++;
+      }
+      // Decrement the batch's bottle count for bottles sent out (only when tracked)
+      if (batch && bottlesUsed > 0 && batch.bottle_count != null) {
+        await updateTinctureBatch.mutateAsync({
+          id: batch.id,
+          bottle_count: Math.max(0, batch.bottle_count - bottlesUsed),
+        });
       }
       // Remove the tincture inventory row — the batch record is the permanent record now
       await deleteInventory.mutateAsync(item.id);
@@ -468,6 +470,7 @@ export function InventorySection({ location, title, icon, description, searchQue
                   : (item.current_batch_id ? batchById.get(item.current_batch_id) : null) ?? activeBatchByHerbId.get(item.herb_id) ?? null
               }
               hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
+              isBulkOut={location === 'clinic' && herbIsBulkOut(item)}
               isEditing={editingId === item.id}
               editStatus={editStatus}
               editHerbName={editHerbName}
@@ -556,6 +559,7 @@ interface InventoryItemRowProps {
   item: InventoryItem;
   batch?: TinctureBatch | null;
   hasBackstock?: boolean;
+  isBulkOut?: boolean;
   isEditing: boolean;
   editStatus: InventoryStatus;
   editHerbName: string;
@@ -577,6 +581,7 @@ function InventoryItemRow({
   item,
   batch = null,
   hasBackstock = false,
+  isBulkOut = false,
   isEditing,
   editStatus,
   editHerbName,
@@ -705,6 +710,11 @@ function InventoryItemRow({
               {hasBackstock && (
                 <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-blue-500/20 text-blue-700 dark:text-blue-400">
                   Backstock
+                </span>
+              )}
+              {isBulkOut && (
+                <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-red-500/20 text-red-700 dark:text-red-400">
+                  Bulk OUT
                 </span>
               )}
               {location === 'tincture' && (

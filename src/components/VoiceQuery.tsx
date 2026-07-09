@@ -103,7 +103,7 @@ function parseCrossLocationQuery(text: string): CrossLocationQuery | null {
 }
 
 export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProps) {
-  const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
+  const { transcript, alternatives, isListening, isSupported, error: voiceError, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const searchInventory = useSearchInventory();
   const { data: allInventory = [] } = useInventory();
   const { data: herbsData } = useHerbs();
@@ -295,6 +295,16 @@ export function VoiceQuery({ onResult, activeTab = 'tinctures' }: VoiceQueryProp
       <Card className="bg-muted/50">
         <CardContent className="p-4 text-center text-muted-foreground">
           Voice recognition is not supported in this browser. Try Chrome, Edge, Safari, or DuckDuckGo (make sure microphone permissions are enabled).
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (voiceError) {
+    return (
+      <Card className="bg-muted/50">
+        <CardContent className="p-4 text-center text-muted-foreground">
+          {voiceError}
         </CardContent>
       </Card>
     );

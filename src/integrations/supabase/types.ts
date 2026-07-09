@@ -179,6 +179,7 @@ export type Database = {
           batch_date: string
           status: 'macerating' | 'active' | 'archived'
           pressed_date: string | null
+          bottle_count: number | null
           notes: string | null
           bulk_inventory_id: string | null
           bulk_batch_id: string | null
@@ -193,6 +194,7 @@ export type Database = {
           batch_date?: string
           status?: 'macerating' | 'active' | 'archived'
           pressed_date?: string | null
+          bottle_count?: number | null
           notes?: string | null
           bulk_inventory_id?: string | null
           bulk_batch_id?: string | null
@@ -207,6 +209,7 @@ export type Database = {
           batch_date?: string
           status?: 'macerating' | 'active' | 'archived'
           pressed_date?: string | null
+          bottle_count?: number | null
           notes?: string | null
           bulk_inventory_id?: string | null
           bulk_batch_id?: string | null

@@ -21,6 +21,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useStripePortal } from '@/hooks/useSubscription';
 import { toast } from 'sonner';
 
+// Billing UI is built but hidden for now — flip to true to re-enable the "Manage Billing" button.
+const BILLING_ENABLED = false;
+
 const Index = () => {
   const { signOut } = useAuth();
   const { data: allInventory = [] } = useInventory();
@@ -92,15 +95,17 @@ const Index = () => {
               <Button variant="ghost" size="icon" onClick={handleExportCsv} title="Export to CSV">
                 <Download className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => stripePortal.mutate()}
-                disabled={stripePortal.isPending}
-                title="Manage Billing"
-              >
-                {stripePortal.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-              </Button>
+              {BILLING_ENABLED && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => stripePortal.mutate()}
+                  disabled={stripePortal.isPending}
+                  title="Manage Billing"
+                >
+                  {stripePortal.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>

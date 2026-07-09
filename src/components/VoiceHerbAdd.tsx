@@ -28,7 +28,7 @@ interface VoiceHerbAddProps {
 }
 
 export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
-  const { transcript, alternatives, isListening, isSupported, startListening, stopListening, resetTranscript } = useVoiceRecognition();
+  const { transcript, alternatives, isListening, isSupported, error: voiceError, startListening, stopListening, resetTranscript } = useVoiceRecognition();
   const { data: existingHerbs } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
@@ -49,6 +49,13 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
     () => buildExtraNamesFromHerbs(existingHerbs ?? []),
     [existingHerbs]
   );
+
+  // Surface insecure-context / network failures from the shared voice hook
+  useEffect(() => {
+    if (voiceError) {
+      toast.error(voiceError);
+    }
+  }, [voiceError]);
 
   // Parse transcript when voice input stops
   useEffect(() => {

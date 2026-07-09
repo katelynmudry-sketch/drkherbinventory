@@ -1,10 +1,39 @@
 import { supabase } from '@/integrations/supabase/client';
-import { InventoryItem, InventoryLocation } from './useInventory';
+import { getDisplayName, InventoryItem, InventoryLocation } from './useInventory';
 
 export interface AvailabilityInfo {
   location: InventoryLocation;
   status: string;
   tinctureReadyAt?: string | null;
+}
+
+// Matches an inventory item to its counterpart in another location's item list,
+// by herb_id first, then by display name (exact, prefix, or typo-tolerant first-6-chars).
+export function findMatchingInventoryItem(
+  target: InventoryItem,
+  candidates: InventoryItem[]
+): InventoryItem | undefined {
+  const byId = candidates.find(c => c.herb_id === target.herb_id);
+  if (byId) return byId;
+
+  if (!target.herbs) return undefined;
+  const targetName = getDisplayName(target.herbs).toLowerCase().trim();
+  if (!targetName) return undefined;
+
+  let prefixMatch: InventoryItem | undefined;
+  let typoMatch: InventoryItem | undefined;
+  for (const candidate of candidates) {
+    if (!candidate.herbs) continue;
+    const name = getDisplayName(candidate.herbs).toLowerCase().trim();
+    if (name === targetName) return candidate;
+    if (!prefixMatch && (name.startsWith(targetName) || targetName.startsWith(name))) {
+      prefixMatch = candidate;
+    }
+    if (!typoMatch && targetName.length >= 5 && name.length >= 5 && targetName.slice(0, 6) === name.slice(0, 6)) {
+      typoMatch = candidate;
+    }
+  }
+  return prefixMatch ?? typoMatch;
 }
 
 export async function checkHerbAvailability(herbId: string, excludeLocation?: InventoryLocation): Promise<AvailabilityInfo[]> {

@@ -100,6 +100,30 @@ npm run dev
 
 The app will run at `http://localhost:8080`
 
+### Voice features locally require HTTPS
+
+Plain `npm run dev` serves over HTTP. Chrome/Edge treat `localhost`
+as a secure-context exception, so voice works there even on HTTP —
+but DuckDuckGo Browser does **not** grant that exception, so voice
+buttons will fail locally in DDG with a console `network` error.
+
+To test voice locally in DuckDuckGo Browser, run:
+
+```bash
+npm run dev:https
+```
+
+then open `https://localhost:8080` and click through the
+self-signed certificate warning (one-time per browser session).
+
+**Known gap:** the LAN URL Vite prints for phone testing
+(`http://192.168.x.x:8080`) is still plain HTTP even with
+`dev:https`, because the self-signed cert is only issued for
+`localhost`. No browser grants a secure-context exception for LAN
+IPs, so voice testing on a real phone over the LAN dev URL doesn't
+work — use the deployed GitHub Pages HTTPS URL for phone voice
+testing instead.
+
 ## Troubleshooting
 
 **Voice recognition not working?**

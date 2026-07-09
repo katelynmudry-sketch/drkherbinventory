@@ -3,6 +3,7 @@ import { differenceInDays, isPast, format } from 'date-fns';
 import { AlertCircle, Clock, Droplets, ChevronDown, ChevronUp, PackageX } from 'lucide-react';
 import { useInventory, getDisplayName, InventoryItem } from '@/hooks/useInventory';
 import { useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
+import { findMatchingInventoryItem } from '@/hooks/useInventoryCheck';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
 import { cn } from '@/lib/utils';
 
@@ -11,8 +12,11 @@ export function TinctureRestockPanel() {
   const { data: tinctureInventory = [] } = useInventory('tincture');
   const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: bulkInventory = [] } = useInventory('bulk');
+<<<<<<< Updated upstream
   const { data: bulkBackstockInventory = [] } = useInventory('bulk_backstock');
   const { data: bulkClinicInventory = [] } = useInventory('bulk_clinic');
+=======
+>>>>>>> Stashed changes
   const { data: allBatches = [] } = useTinctureBatches();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -52,26 +56,15 @@ export function TinctureRestockPanel() {
   });
 
   // Only count tincture backstock as available if status is not 'out'
-  const backstockByHerbId = new Map<string, InventoryItem>();
-  const backstockByName = new Map<string, InventoryItem>();
-  backstockInventory.forEach(i => {
-    if (i.status !== 'out') {
-      backstockByHerbId.set(i.herb_id, i);
-      if (i.herbs) backstockByName.set(getDisplayName(i.herbs).toLowerCase().trim(), i);
-    }
-  });
-
   const findBackstockForClinicItem = (clinicItem: InventoryItem): boolean => {
-    if (backstockByHerbId.has(clinicItem.herb_id)) return true;
-    if (clinicItem.herbs) {
-      const name = getDisplayName(clinicItem.herbs).toLowerCase().trim();
-      if (backstockByName.has(name)) return true;
-      for (const k of backstockByName.keys()) {
-        if (k.startsWith(name) || name.startsWith(k)) return true;
-        if (name.length >= 5 && k.length >= 5 && name.slice(0, 6) === k.slice(0, 6)) return true;
-      }
-    }
-    return false;
+    const match = findMatchingInventoryItem(clinicItem, backstockInventory);
+    return !!match && match.status !== 'out';
+  };
+
+  // No bulk stock to make a tincture from
+  const isBulkOutForClinicItem = (clinicItem: InventoryItem): boolean => {
+    const match = findMatchingInventoryItem(clinicItem, bulkInventory);
+    return match?.status === 'out';
   };
 
   const tinctureByHerbId = new Map<string, InventoryItem>();
@@ -122,7 +115,11 @@ export function TinctureRestockPanel() {
       null;
     const hasBackstock = findBackstockForClinicItem(clinicItem);
     const needsAction = !hasBackstock && !batch && !tinctureItem;
+<<<<<<< Updated upstream
     const bulkOut = getBulkQtyForClinicItem(clinicItem) <= 0;
+=======
+    const bulkOut = isBulkOutForClinicItem(clinicItem);
+>>>>>>> Stashed changes
     return { clinicItem, tinctureItem, batch, hasBackstock, needsAction, bulkOut };
   });
 
@@ -217,6 +214,14 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
           Backstock
         </span>
       )}
+<<<<<<< Updated upstream
+=======
+      {bulkOut && (
+        <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-red-500/20 text-red-700 dark:text-red-400">
+          Bulk OUT
+        </span>
+      )}
+>>>>>>> Stashed changes
       <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} hasBackstock={hasBackstock} bulkOut={bulkOut} />
     </div>
   );
@@ -253,7 +258,9 @@ function TinctureBadge({ tinctureItem, batch, needsAction, hasBackstock, bulkOut
           ? "bg-red-500/20 text-red-700 dark:text-red-400"
           : "bg-muted text-muted-foreground"
       )}>
-        {needsAction ? (hasBackstock ? "Grab backstock" : "Start tincture") : "No batch"}
+        {needsAction
+          ? (bulkOut ? "Bulk out — can't make" : hasBackstock ? "Grab backstock" : "Start tincture")
+          : "No batch"}
       </span>
     );
   }
@@ -263,7 +270,7 @@ function TinctureBadge({ tinctureItem, batch, needsAction, hasBackstock, bulkOut
     return (
       <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-green-500/20 text-green-700 dark:text-green-400">
         <Droplets className="h-3 w-3" />
-        Pressed
+        Pressed{batch.bottle_count != null && ` · ${batch.bottle_count}`}
       </span>
     );
   }

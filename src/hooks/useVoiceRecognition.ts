@@ -31,11 +31,15 @@ declare global {
   }
 }
 
+const INSECURE_CONTEXT_MESSAGE =
+  "Voice input needs a secure (HTTPS) connection — try the GitHub Pages site, or run `npm run dev:https` locally.";
+
 interface VoiceRecognitionResult {
   transcript: string;
   alternatives: string[];
   isListening: boolean;
   isSupported: boolean;
+  error: string | null;
   startListening: () => void;
   stopListening: () => void;
   resetTranscript: () => void;
@@ -45,10 +49,13 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
   const [transcript, setTranscript] = useState('');
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const isSecureContext = typeof window !== 'undefined' && window.isSecureContext;
 
   useEffect(() => {
     return () => {
@@ -127,6 +134,9 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
+      if (event.error === 'network' && !isSecureContext) {
+        setError(INSECURE_CONTEXT_MESSAGE);
+      }
       if (event.error === 'no-speech') {
         // handled by onend
         return;
@@ -142,10 +152,15 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     };
 
     return recognition;
-  }, [isSupported]);
+  }, [isSupported, isSecureContext]);
 
   const startListening = useCallback(() => {
     if (!isSupported || isListening) return;
+
+    if (!isSecureContext) {
+      setError(INSECURE_CONTEXT_MESSAGE);
+      return;
+    }
 
     const recognition = createRecognition();
     if (!recognition) return;
@@ -153,8 +168,9 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     recognitionRef.current = recognition;
     setTranscript('');
     setAlternatives([]);
+    setError(null);
     recognition.start();
-  }, [isListening, isSupported, createRecognition]);
+  }, [isListening, isSupported, isSecureContext, createRecognition]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
@@ -172,6 +188,7 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
     alternatives,
     isListening,
     isSupported,
+    error,
     startListening,
     stopListening,
     resetTranscript,

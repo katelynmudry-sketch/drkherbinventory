@@ -55,6 +55,11 @@ A herbal inventory management web app for a clinical setting. Core workflow:
 
 Herb name correction uses fuzzy matching (Levenshtein distance) + a 100+ entry synonym map in `herbCorrection.ts`.
 
+Voice recognition requires a secure context (HTTPS) — DuckDuckGo Browser
+doesn't grant the `localhost`-over-HTTP exception that Chrome/Edge do, so
+local voice testing in DDG needs `npm run dev:https`; see
+`GITHUB_PAGES_SETUP.md` for details.
+
 ## Active Development: Ordering & Pricing Feature
 
 **Goal**: When a bulk herb is `out`, show a ranked list of suppliers with pricing so ordering decisions can be made from the desktop.
