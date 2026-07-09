@@ -299,6 +299,7 @@ const Ordering = () => {
   // Data
   const { data: inventory = [] } = useInventory('bulk');
   const { data: backstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: clinicInventory = [] } = useInventory('bulk_clinic');
   const { data: suppliers = [] } = useMergedSuppliers();
   const { data: pricing = [] } = useMergedHerbPricing();
   // Personal-only data for the Manage section (edit/delete operations)
@@ -330,7 +331,19 @@ const Ordering = () => {
     return map;
   }, [backstockInventory]);
 
+  // Clinic (bulk_clinic) qty by herb_id
+  const clinicQtyByHerbId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const i of clinicInventory) {
+      map.set(i.herb_id, Number(i.quantity));
+    }
+    return map;
+  }, [clinicInventory]);
+
   // ── Compute the order list ────────────────────────────────────────────────
+  // Bulk is the primary trigger: only bulk-location rows are candidates here
+  // (backstock-only or clinic-only herbs never appear). Backstock + clinic
+  // qty are added on top of bulk qty to get the true total on hand.
   const orderItems = useMemo(() => {
     const included = new Map<string, (typeof inventory)[0] & { _manuallyAdded?: boolean }>();
 
@@ -339,10 +352,11 @@ const Ordering = () => {
 
       const bulkQty = Number(item.quantity);
       const backstockQty = backstockQtyByHerbId.get(item.herb_id) ?? 0;
-      const totalQty = bulkQty + backstockQty;
+      const clinicQty = clinicQtyByHerbId.get(item.herb_id) ?? 0;
+      const totalQty = bulkQty + backstockQty + clinicQty;
       const threshold = Number(item.herbs?.low_threshold_lb ?? 0.25);
 
-      // Treat as 'out' only if truly zero across both locations
+      // Treat as 'out' only if truly zero across all three locations
       const effectivelyOut = item.status === 'out' && totalQty === 0;
       const matchesOut = activeFilters.has('out') && effectivelyOut;
       const matches025 = activeFilters.has('0.25') && totalQty > 0 && totalQty <= 0.25;
@@ -362,7 +376,7 @@ const Ordering = () => {
     }
 
     return Array.from(included.values());
-  }, [inventory, activeFilters, manualAdds, manualRemoveIds, backstockQtyByHerbId]);
+  }, [inventory, activeFilters, manualAdds, manualRemoveIds, backstockQtyByHerbId, clinicQtyByHerbId]);
 
   // Herbs available to add manually (bulk inventory herbs not already in the order list)
   const orderItemIds = useMemo(() => new Set(orderItems.map(i => i.id)), [orderItems]);
@@ -599,13 +613,17 @@ const Ordering = () => {
                             <td className="px-3 py-2 text-muted-foreground">
                               {(() => {
                                 const backstockQty = backstockQtyByHerbId.get(item.herb_id) ?? 0;
-                                const totalQty = qty + backstockQty;
+                                const clinicQty = clinicQtyByHerbId.get(item.herb_id) ?? 0;
+                                const totalQty = qty + backstockQty + clinicQty;
                                 if (totalQty === 0) return <Badge variant="destructive" className="text-xs">OUT</Badge>;
+                                const parts = [qty];
+                                if (backstockQty > 0) parts.push(backstockQty);
+                                if (clinicQty > 0) parts.push(clinicQty);
                                 return (
                                   <span>
                                     {totalQty} lb
-                                    {backstockQty > 0 && (
-                                      <span className="text-xs text-muted-foreground ml-1">({qty}+{backstockQty})</span>
+                                    {parts.length > 1 && (
+                                      <span className="text-xs text-muted-foreground ml-1">({parts.join('+')})</span>
                                     )}
                                   </span>
                                 );
