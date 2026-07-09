@@ -268,6 +268,10 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
             quantity: editBackstockQty,
           });
         }
+      } else if (existingBackstock) {
+        // "None" selected on a row that already exists — remove it rather than
+        // silently leaving the old quantity in place while still reporting success.
+        await deleteInventory.mutateAsync(existingBackstock.id);
       }
 
       // Handle clinic bulk quantity (uses the herb's own low threshold, same as main Bulk)
@@ -287,6 +291,8 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
             quantity: editClinicBulkQty,
           });
         }
+      } else if (existingClinicBulk) {
+        await deleteInventory.mutateAsync(existingClinicBulk.id);
       }
 
       setEditingId(null);
