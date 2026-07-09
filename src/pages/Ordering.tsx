@@ -298,7 +298,7 @@ const Ordering = () => {
 
   // Data
   const { data: inventory = [] } = useInventory('bulk');
-  const { data: backstockInventory = [] } = useInventory('backstock');
+  const { data: backstockInventory = [] } = useInventory('bulk_backstock');
   const { data: suppliers = [] } = useMergedSuppliers();
   const { data: pricing = [] } = useMergedHerbPricing();
   // Personal-only data for the Manage section (edit/delete operations)
