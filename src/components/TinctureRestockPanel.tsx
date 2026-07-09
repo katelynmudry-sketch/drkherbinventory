@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { differenceInDays, isPast, format } from 'date-fns';
-import { AlertCircle, Clock, Droplets, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, Clock, Droplets, ChevronDown, ChevronUp, PackageX } from 'lucide-react';
 import { useInventory, getDisplayName, InventoryItem } from '@/hooks/useInventory';
 import { useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
@@ -10,8 +10,38 @@ export function TinctureRestockPanel() {
   const { data: clinicInventory = [] } = useInventory('clinic');
   const { data: tinctureInventory = [] } = useInventory('tincture');
   const { data: backstockInventory = [] } = useInventory('backstock');
+  const { data: bulkInventory = [] } = useInventory('bulk');
+  const { data: bulkBackstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: bulkClinicInventory = [] } = useInventory('bulk_clinic');
   const { data: allBatches = [] } = useTinctureBatches();
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Raw bulk herb on hand (bulk + bulk backstock + bulk clinic combined) —
+  // this is the material a tincture batch is actually pressed from, so if
+  // it's all gone there's nothing to start a tincture with.
+  const bulkQtyByHerbId = new Map<string, number>();
+  const bulkQtyByName = new Map<string, number>();
+  [...bulkInventory, ...bulkBackstockInventory, ...bulkClinicInventory].forEach(i => {
+    const qty = Number(i.quantity) || 0;
+    bulkQtyByHerbId.set(i.herb_id, (bulkQtyByHerbId.get(i.herb_id) ?? 0) + qty);
+    if (i.herbs) {
+      const name = getDisplayName(i.herbs).toLowerCase().trim();
+      bulkQtyByName.set(name, (bulkQtyByName.get(name) ?? 0) + qty);
+    }
+  });
+
+  const getBulkQtyForClinicItem = (clinicItem: InventoryItem): number => {
+    if (bulkQtyByHerbId.has(clinicItem.herb_id)) return bulkQtyByHerbId.get(clinicItem.herb_id)!;
+    if (clinicItem.herbs) {
+      const name = getDisplayName(clinicItem.herbs).toLowerCase().trim();
+      if (bulkQtyByName.has(name)) return bulkQtyByName.get(name)!;
+      for (const [k, v] of bulkQtyByName) {
+        if (k.startsWith(name) || name.startsWith(k)) return v;
+        if (name.length >= 5 && k.length >= 5 && name.slice(0, 6) === k.slice(0, 6)) return v;
+      }
+    }
+    return 0;
+  };
 
   // Build lookup maps
   const activeBatchByHerbId = new Map<string, TinctureBatch>();
@@ -92,7 +122,8 @@ export function TinctureRestockPanel() {
       null;
     const hasBackstock = findBackstockForClinicItem(clinicItem);
     const needsAction = !hasBackstock && !batch && !tinctureItem;
-    return { clinicItem, tinctureItem, batch, hasBackstock, needsAction };
+    const bulkOut = getBulkQtyForClinicItem(clinicItem) <= 0;
+    return { clinicItem, tinctureItem, batch, hasBackstock, needsAction, bulkOut };
   });
 
   const statusPriority: Record<string, number> = { out: 0, low: 1 };
@@ -136,7 +167,7 @@ export function TinctureRestockPanel() {
       </button>
       {!isCollapsed && (
         <div className="space-y-1 mt-3">
-          {rows.map(({ clinicItem, tinctureItem, batch, hasBackstock, needsAction }) => (
+          {rows.map(({ clinicItem, tinctureItem, batch, hasBackstock, needsAction, bulkOut }) => (
             <RestockRow
               key={clinicItem.id}
               clinicItem={clinicItem}
@@ -144,6 +175,7 @@ export function TinctureRestockPanel() {
               batch={batch}
               hasBackstock={hasBackstock}
               needsAction={needsAction}
+              bulkOut={bulkOut}
             />
           ))}
         </div>
@@ -158,9 +190,10 @@ interface RestockRowProps {
   batch: TinctureBatch | null;
   hasBackstock: boolean;
   needsAction: boolean;
+  bulkOut: boolean;
 }
 
-function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction }: RestockRowProps) {
+function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction, bulkOut }: RestockRowProps) {
   const herbName = clinicItem.herbs ? getDisplayName(clinicItem.herbs) : 'Unknown';
   const alcohol = clinicItem.herbs
     ? getTinctureAlcohol(clinicItem.herbs.name) ??
@@ -184,7 +217,7 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
           Backstock
         </span>
       )}
-      <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} hasBackstock={hasBackstock} />
+      <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} hasBackstock={hasBackstock} bulkOut={bulkOut} />
     </div>
   );
 }
@@ -203,8 +236,16 @@ function ClinicStatusBadge({ status }: { status: 'low' | 'out' }) {
   );
 }
 
-function TinctureBadge({ tinctureItem, batch, needsAction, hasBackstock }: { tinctureItem: InventoryItem | null; batch: TinctureBatch | null; needsAction: boolean; hasBackstock: boolean }) {
+function TinctureBadge({ tinctureItem, batch, needsAction, hasBackstock, bulkOut }: { tinctureItem: InventoryItem | null; batch: TinctureBatch | null; needsAction: boolean; hasBackstock: boolean; bulkOut: boolean }) {
   if (!tinctureItem && !batch) {
+    if (needsAction && !hasBackstock && bulkOut) {
+      return (
+        <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-orange-500/20 text-orange-700 dark:text-orange-400">
+          <PackageX className="h-3 w-3" />
+          Bulk out
+        </span>
+      );
+    }
     return (
       <span className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
