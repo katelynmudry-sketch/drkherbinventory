@@ -12,11 +12,8 @@ export function TinctureRestockPanel() {
   const { data: tinctureInventory = [] } = useInventory('tincture');
   const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: bulkInventory = [] } = useInventory('bulk');
-<<<<<<< Updated upstream
   const { data: bulkBackstockInventory = [] } = useInventory('bulk_backstock');
   const { data: bulkClinicInventory = [] } = useInventory('bulk_clinic');
-=======
->>>>>>> Stashed changes
   const { data: allBatches = [] } = useTinctureBatches();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -59,12 +56,6 @@ export function TinctureRestockPanel() {
   const findBackstockForClinicItem = (clinicItem: InventoryItem): boolean => {
     const match = findMatchingInventoryItem(clinicItem, backstockInventory);
     return !!match && match.status !== 'out';
-  };
-
-  // No bulk stock to make a tincture from
-  const isBulkOutForClinicItem = (clinicItem: InventoryItem): boolean => {
-    const match = findMatchingInventoryItem(clinicItem, bulkInventory);
-    return match?.status === 'out';
   };
 
   const tinctureByHerbId = new Map<string, InventoryItem>();
@@ -115,11 +106,7 @@ export function TinctureRestockPanel() {
       null;
     const hasBackstock = findBackstockForClinicItem(clinicItem);
     const needsAction = !hasBackstock && !batch && !tinctureItem;
-<<<<<<< Updated upstream
     const bulkOut = getBulkQtyForClinicItem(clinicItem) <= 0;
-=======
-    const bulkOut = isBulkOutForClinicItem(clinicItem);
->>>>>>> Stashed changes
     return { clinicItem, tinctureItem, batch, hasBackstock, needsAction, bulkOut };
   });
 
@@ -214,14 +201,11 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
           Backstock
         </span>
       )}
-<<<<<<< Updated upstream
-=======
       {bulkOut && (
         <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-red-500/20 text-red-700 dark:text-red-400">
           Bulk OUT
         </span>
       )}
->>>>>>> Stashed changes
       <TinctureBadge tinctureItem={tinctureItem} batch={batch} needsAction={needsAction} hasBackstock={hasBackstock} bulkOut={bulkOut} />
     </div>
   );
