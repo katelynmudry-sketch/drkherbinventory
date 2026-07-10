@@ -11,6 +11,7 @@ import { VoiceAssistant } from '@/components/VoiceAssistant';
 import { InventorySection } from '@/components/InventorySection';
 import { BulkInventorySection } from '@/components/BulkInventorySection';
 import { TinctureRestockPanel } from '@/components/TinctureRestockPanel';
+import { PremadeOrderList } from '@/components/PremadeOrderList';
 import { BatchTrackingPanel } from '@/components/BatchTrackingPanel';
 import { AddHerbDialog } from '@/components/AddHerbDialog';
 import { DuplicateHerbsReview } from '@/components/DuplicateHerbsReview';
@@ -184,6 +185,7 @@ const Index = () => {
                   showBatchInfo={batchTrackingMode}
                 />
               </div>
+              <PremadeOrderList />
             </section>
           </TabsContent>
 
