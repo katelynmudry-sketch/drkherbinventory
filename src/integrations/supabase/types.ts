@@ -353,6 +353,95 @@ export type Database = {
         }
         Relationships: []
       }
+      tincture_price_tiers: {
+        Row: {
+          id: string
+          tier_label: string
+          price_100ml: number
+          price_250ml: number
+          price_500ml: number
+          price_1000ml: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tier_label: string
+          price_100ml: number
+          price_250ml: number
+          price_500ml: number
+          price_1000ml: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          tier_label?: string
+          price_100ml?: number
+          price_250ml?: number
+          price_500ml?: number
+          price_1000ml?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      tincture_price_herbs: {
+        Row: {
+          id: string
+          herb_name: string
+          tier_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          herb_name: string
+          tier_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          herb_name?: string
+          tier_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tincture_price_herbs_tier_id_fkey"
+            columns: ["tier_id"]
+            isOneToOne: false
+            referencedRelation: "tincture_price_tiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      premade_tinctures: {
+        Row: {
+          id: string
+          user_id: string
+          herb_name: string
+          notes: string | null
+          default_size_ml: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          herb_name: string
+          notes?: string | null
+          default_size_ml?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          herb_name?: string
+          notes?: string | null
+          default_size_ml?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           id: string
