@@ -46,6 +46,7 @@ import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+import { useActivityLog } from '@/contexts/ActivityLogContext';
 
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
@@ -69,6 +70,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   const updateHerb = useUpdateHerb();
   const addHerb = useAddHerb();
   const receiveBulkBatch = useReceiveBulkBatch();
+  const { logActivity } = useActivityLog();
 
   // herb_id -> current available lot, for the batch-tracking badge
   const currentLotByHerbId = useMemo(() => {
@@ -303,7 +305,21 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   };
 
   const handleDelete = async (id: string) => {
+    const item = inventory.find(i => i.id === id);
     await deleteInventory.mutateAsync(id);
+    if (item) {
+      logActivity({
+        type: 'remove',
+        herb_id: item.herb_id,
+        herbName: item.herbs ? getDisplayName(item.herbs) : 'Unknown',
+        location: item.location,
+        status: item.status,
+        notes: item.notes,
+        tincture_started_at: item.tincture_started_at,
+        tincture_ready_at: item.tincture_ready_at,
+        current_batch_id: item.current_batch_id,
+      });
+    }
   };
 
   const handleOpenTransfer = (item: InventoryItem) => {
@@ -1627,6 +1643,7 @@ function ClinicBulkView({
   const addInventory = useAddInventory();
   const deleteInventory = useDeleteInventory();
   const addHerb = useAddHerb();
+  const { logActivity } = useActivityLog();
 
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1695,7 +1712,21 @@ function ClinicBulkView({
   };
 
   const handleDelete = async (id: string) => {
+    const item = clinicInventory.find(i => i.id === id);
     await deleteInventory.mutateAsync(id);
+    if (item) {
+      logActivity({
+        type: 'remove',
+        herb_id: item.herb_id,
+        herbName: item.herbs ? getDisplayName(item.herbs) : 'Unknown',
+        location: item.location,
+        status: item.status,
+        notes: item.notes,
+        tincture_started_at: item.tincture_started_at,
+        tincture_ready_at: item.tincture_ready_at,
+        current_batch_id: item.current_batch_id,
+      });
+    }
   };
 
   const handleOpenTransfer = (item: InventoryItem) => {

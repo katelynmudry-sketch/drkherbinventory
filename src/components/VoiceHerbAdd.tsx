@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getHerbSuggestions, scanForHerbs, buildExtraNamesFromHerbs } from '@/lib/herbCorrection';
 import { supabase } from '@/integrations/supabase/client';
+import { useActivityLog } from '@/contexts/ActivityLogContext';
 
 type CommandType = 'add' | 'remove' | 'change';
 
@@ -35,6 +36,7 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
   const createTinctureBatch = useCreateTinctureBatch();
   const removeInventory = useRemoveInventoryByHerbName();
   const updateInventory = useUpdateInventoryByHerbName();
+  const { logActivity } = useActivityLog();
   
   const [lastTranscript, setLastTranscript] = useState('');
   const [parsedCommand, setParsedCommand] = useState<ParsedCommand | null>(null);
@@ -268,7 +270,19 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
         // Handle remove command
         for (const herbName of parsedCommand.herbNames) {
           try {
-            await removeInventory.mutateAsync({ herbName, location });
+            const result = await removeInventory.mutateAsync({ herbName, location });
+            const snap = result.snapshot;
+            logActivity({
+              type: 'remove',
+              herb_id: snap.herb_id,
+              herbName,
+              location,
+              status: snap.status as InventoryStatus,
+              notes: snap.notes,
+              tincture_started_at: snap.tincture_started_at,
+              tincture_ready_at: snap.tincture_ready_at,
+              current_batch_id: snap.current_batch_id,
+            });
             successCount++;
           } catch (error: any) {
             console.error(`Failed to remove ${herbName}:`, error);
@@ -288,7 +302,17 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
         // Handle change/update status command
         for (const herbName of parsedCommand.herbNames) {
           try {
-            await updateInventory.mutateAsync({ herbName, location, status });
+            const result = await updateInventory.mutateAsync({ herbName, location, status });
+            if (result.prevStatus !== status) {
+              logActivity({
+                type: 'status_change',
+                inventoryId: result.inventoryId,
+                herbName,
+                location,
+                prevStatus: result.prevStatus,
+                newStatus: status,
+              });
+            }
             successCount++;
           } catch (error: any) {
             console.error(`Failed to update ${herbName}:`, error);
@@ -320,8 +344,16 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
           }
           
           // Add to inventory
-          await addInventory.mutateAsync({
+          const created = await addInventory.mutateAsync({
             herb_id: herb.id,
+            location,
+            status,
+          });
+          logActivity({
+            type: 'add',
+            inventoryId: created.id,
+            herb_id: herb.id,
+            herbName,
             location,
             status,
           });
@@ -332,8 +364,9 @@ export function VoiceHerbAdd({ activeTab = 'tinctures' }: VoiceHerbAddProps) {
             try {
               const batch = await createTinctureBatch.mutateAsync({ herb_id: herb.id });
               batchNumber = batch.batch_number;
-            } catch (batchErr) {
+            } catch (batchErr: any) {
               console.error(`Failed to create batch for ${herbName}:`, batchErr);
+              toast.error(`Batch error for ${herbName}: ${batchErr?.message ?? batchErr}`);
             }
           }
 

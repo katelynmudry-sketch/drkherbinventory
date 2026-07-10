@@ -350,29 +350,31 @@ export function useSearchInventory() {
 
 export function useRemoveInventoryByHerbName() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ herbName, location }: { herbName: string; location: InventoryLocation }) => {
-      // First find the inventory item by herb name and location
+      // Fetch full row so caller can snapshot it for undo
       const { data: inventoryItems, error: findError } = await supabase
         .from('inventory')
-        .select('id, herbs!inner(name)')
+        .select('id, herb_id, status, notes, tincture_started_at, tincture_ready_at, current_batch_id, herbs!inner(name)')
         .eq('location', location)
         .ilike('herbs.name', herbName);
-      
+
       if (findError) throw findError;
       if (!inventoryItems || inventoryItems.length === 0) {
         throw new Error(`${herbName} not found in ${location}`);
       }
-      
+
+      const item = inventoryItems[0];
+
       // Delete the inventory item
       const { error: deleteError } = await supabase
         .from('inventory')
         .delete()
-        .eq('id', inventoryItems[0].id);
-      
+        .eq('id', item.id);
+
       if (deleteError) throw deleteError;
-      return { herbName, location };
+      return { herbName, location, snapshot: item };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -385,10 +387,10 @@ export function useUpdateInventoryByHerbName() {
 
   return useMutation({
     mutationFn: async ({ herbName, location, status }: { herbName: string; location: InventoryLocation; status: InventoryStatus }) => {
-      // First find the inventory item by herb name and location
+      // Fetch current row (includes prevStatus for undo logging)
       const { data: inventoryItems, error: findError } = await supabase
         .from('inventory')
-        .select('id, herbs!inner(name)')
+        .select('id, status, herbs!inner(name)')
         .eq('location', location)
         .ilike('herbs.name', herbName);
 
@@ -396,6 +398,8 @@ export function useUpdateInventoryByHerbName() {
       if (!inventoryItems || inventoryItems.length === 0) {
         throw new Error(`${herbName} not found in ${location}`);
       }
+
+      const prevStatus = inventoryItems[0].status as InventoryStatus;
 
       // Update the inventory item status
       const { data, error: updateError } = await supabase
@@ -406,7 +410,7 @@ export function useUpdateInventoryByHerbName() {
         .single();
 
       if (updateError) throw updateError;
-      return { herbName, location, status, data };
+      return { herbName, location, status, prevStatus, inventoryId: inventoryItems[0].id, data };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });

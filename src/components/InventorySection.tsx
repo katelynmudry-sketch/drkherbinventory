@@ -32,10 +32,12 @@ import { usePressBatch, useTinctureBatches, useUpdateTinctureBatch, TinctureBatc
 import { checkHerbAvailability, findMatchingInventoryItem, findHerbNameMatch, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { usePremadeTinctures } from '@/hooks/usePremadeTinctures';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
 import { format, differenceInDays, isPast, addWeeks } from 'date-fns';
 import { toast } from 'sonner';
+import { useActivityLog } from '@/contexts/ActivityLogContext';
 
 interface InventorySectionProps {
   location: InventoryLocation;
@@ -60,6 +62,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const pressBatch = usePressBatch();
   const updateTinctureBatch = useUpdateTinctureBatch();
   const setInventoryStatus = useSetInventoryStatusForHerb();
+  const { logActivity } = useActivityLog();
 
   // Maps for batch badge lookup (only used when showBatchInfo is on)
   const { activeBatchByHerbId, maceratingBatchByHerbId, batchById } = useMemo(() => {
@@ -141,7 +144,7 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (stagedHerbs.length === 0) return;
     const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
     const notes = location === 'backstock' && addSize && addSize !== 'untagged' ? addSize : undefined;
-    await Promise.all(stagedHerbs.map(h =>
+    const results = await Promise.all(stagedHerbs.map(h =>
       addInventory.mutateAsync({
         herb_id: h.id,
         location,
@@ -149,6 +152,16 @@ export function InventorySection({ location, title, icon, description, searchQue
         ...(notes ? { notes } : {}),
       })
     ));
+    results.forEach((created, i) => {
+      logActivity({
+        type: 'add',
+        inventoryId: created.id,
+        herb_id: created.herb_id,
+        herbName: stagedHerbs[i].name,
+        location,
+        status,
+      });
+    });
     toast.success(`Added ${stagedHerbs.length} herb${stagedHerbs.length > 1 ? 's' : ''} to ${title}`);
     setStagedHerbs([]);
     setAddSearch('');
@@ -178,7 +191,19 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (location === 'backstock') {
       await updateInventory.mutateAsync({ id, notes: (size && size !== 'untagged') ? size : null } as any);
     } else if (location !== 'tincture') {
+      const item = inventory.find(i => i.id === id);
+      const prevStatus = item?.status;
       await updateInventory.mutateAsync({ id, status });
+      if (item && prevStatus && prevStatus !== status) {
+        logActivity({
+          type: 'status_change',
+          inventoryId: id,
+          herbName: item.herbs ? getDisplayName(item.herbs) : newHerbName,
+          location,
+          prevStatus,
+          newStatus: status,
+        });
+      }
     }
     setEditingId(null);
   };
@@ -255,7 +280,46 @@ export function InventorySection({ location, title, icon, description, searchQue
   };
 
   const handleDelete = async (id: string) => {
+    const item = inventory.find(i => i.id === id);
     await deleteInventory.mutateAsync(id);
+    if (item) {
+      logActivity({
+        type: 'remove',
+        herb_id: item.herb_id,
+        herbName: item.herbs ? getDisplayName(item.herbs) : 'Unknown',
+        location,
+        status: item.status,
+        notes: item.notes,
+        tincture_started_at: item.tincture_started_at,
+        tincture_ready_at: item.tincture_ready_at,
+        current_batch_id: item.current_batch_id,
+      });
+    }
+    toast.success(
+      item?.herbs ? `Removed ${getDisplayName(item.herbs)} from ${location}` : 'Removed',
+      {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            if (!item) return;
+            supabase.auth.getUser().then(({ data: { user } }) => {
+              if (!user) return;
+              supabase.from('inventory').insert({
+                herb_id: item.herb_id,
+                location: item.location,
+                status: item.status,
+                notes: item.notes,
+                tincture_started_at: item.tincture_started_at,
+                tincture_ready_at: item.tincture_ready_at,
+                current_batch_id: item.current_batch_id,
+                user_id: user.id,
+              });
+            });
+          },
+        },
+        duration: 5000,
+      }
+    );
   };
 
   // Filter out herbs that are already in this location
@@ -472,7 +536,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               item={item}
               batch={
                 location === 'tincture'
-                  ? maceratingBatchByHerbId.get(item.herb_id) ?? null
+                  ? maceratingBatchByHerbId.get(item.herb_id) ?? activeBatchByHerbId.get(item.herb_id) ?? null
                   : !showBatchInfo
                   ? null
                   : (item.current_batch_id ? batchById.get(item.current_batch_id) : null) ?? activeBatchByHerbId.get(item.herb_id) ?? null

@@ -18,6 +18,7 @@ import { useVoiceAssistant, VoiceAssistantAction } from '@/hooks/useVoiceAssista
 import { buildExtraNamesFromHerbs, scanForHerbs } from '@/lib/herbCorrection';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useActivityLog } from '@/contexts/ActivityLogContext';
 
 interface VoiceAssistantProps {
   activeTab?: string;
@@ -42,6 +43,7 @@ export function VoiceAssistant({ activeTab = 'tinctures' }: VoiceAssistantProps)
   const removeInventory = useRemoveInventoryByHerbName();
   const updateInventory = useUpdateInventoryByHerbName();
   const assistant = useVoiceAssistant();
+  const { logActivity } = useActivityLog();
 
   const [lastTranscript, setLastTranscript] = useState('');
   const [spokenResponse, setSpokenResponse] = useState<string | null>(null);
@@ -131,22 +133,39 @@ export function VoiceAssistant({ activeTab = 'tinctures' }: VoiceAssistantProps)
           if (!herb) {
             herb = await addHerb.mutateAsync({ name: action.herbName });
           }
-          await addInventory.mutateAsync({ herb_id: herb.id, location: action.location, status });
+          const created = await addInventory.mutateAsync({ herb_id: herb.id, location: action.location, status });
+          logActivity({ type: 'add', inventoryId: created.id, herb_id: herb.id, herbName: action.herbName, location: action.location, status });
 
           if (action.location === 'tincture') {
             try {
               await createTinctureBatch.mutateAsync({ herb_id: herb.id });
-            } catch (batchErr) {
+            } catch (batchErr: any) {
               console.error(`Failed to create batch for ${action.herbName}:`, batchErr);
+              toast.error(`Batch error for ${action.herbName}: ${batchErr?.message ?? batchErr}`);
             }
           }
           successCount++;
         } else if (action.type === 'remove') {
-          await removeInventory.mutateAsync({ herbName: action.herbName, location: action.location });
+          const result = await removeInventory.mutateAsync({ herbName: action.herbName, location: action.location });
+          const snap = result.snapshot;
+          logActivity({
+            type: 'remove',
+            herb_id: snap.herb_id,
+            herbName: action.herbName,
+            location: action.location,
+            status: snap.status as InventoryStatus,
+            notes: snap.notes,
+            tincture_started_at: snap.tincture_started_at,
+            tincture_ready_at: snap.tincture_ready_at,
+            current_batch_id: snap.current_batch_id,
+          });
           successCount++;
         } else if (action.type === 'update_status') {
           const status = action.status ?? 'full';
-          await updateInventory.mutateAsync({ herbName: action.herbName, location: action.location, status });
+          const result = await updateInventory.mutateAsync({ herbName: action.herbName, location: action.location, status });
+          if (result.prevStatus !== status) {
+            logActivity({ type: 'status_change', inventoryId: result.inventoryId, herbName: action.herbName, location: action.location, prevStatus: result.prevStatus, newStatus: status });
+          }
           successCount++;
         }
       } catch (error) {
