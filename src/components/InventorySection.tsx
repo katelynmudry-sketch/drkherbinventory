@@ -29,7 +29,8 @@ import {
   getDisplayName,
 } from '@/hooks/useInventory';
 import { usePressBatch, useTinctureBatches, useUpdateTinctureBatch, TinctureBatch } from '@/hooks/useTinctureBatches';
-import { checkHerbAvailability, findMatchingInventoryItem, AvailabilityInfo } from '@/hooks/useInventoryCheck';
+import { checkHerbAvailability, findMatchingInventoryItem, findHerbNameMatch, AvailabilityInfo } from '@/hooks/useInventoryCheck';
+import { usePremadeTinctures } from '@/hooks/usePremadeTinctures';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { cn } from '@/lib/utils';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
@@ -50,6 +51,7 @@ export function InventorySection({ location, title, icon, description, searchQue
   const { data: backstockInventory = [] } = useInventory('backstock');
   const { data: bulkInventory = [] } = useInventory('bulk');
   const { data: herbs = [] } = useHerbs();
+  const { data: premadeTinctures = [] } = usePremadeTinctures();
   const { data: tinctureBatches = [] } = useTinctureBatches();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
@@ -82,6 +84,12 @@ export function InventorySection({ location, title, icon, description, searchQue
     if (item.status === 'full') return false;
     const match = findMatchingInventoryItem(item, bulkInventory);
     return match?.status === 'out';
+  };
+
+  // Clinic only: is this herb on the "order premade, don't make" list?
+  const herbIsPremade = (item: InventoryItem) => {
+    if (!item.herbs) return false;
+    return !!findHerbNameMatch(getDisplayName(item.herbs), premadeTinctures);
   };
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -471,6 +479,7 @@ export function InventorySection({ location, title, icon, description, searchQue
               }
               hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
               isBulkOut={location === 'clinic' && herbIsBulkOut(item)}
+              isPremade={location === 'clinic' && herbIsPremade(item)}
               isEditing={editingId === item.id}
               editStatus={editStatus}
               editHerbName={editHerbName}
@@ -560,6 +569,7 @@ interface InventoryItemRowProps {
   batch?: TinctureBatch | null;
   hasBackstock?: boolean;
   isBulkOut?: boolean;
+  isPremade?: boolean;
   isEditing: boolean;
   editStatus: InventoryStatus;
   editHerbName: string;
@@ -582,6 +592,7 @@ function InventoryItemRow({
   batch = null,
   hasBackstock = false,
   isBulkOut = false,
+  isPremade = false,
   isEditing,
   editStatus,
   editHerbName,
@@ -715,6 +726,11 @@ function InventoryItemRow({
               {isBulkOut && (
                 <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-red-500/20 text-red-700 dark:text-red-400">
                   Bulk OUT
+                </span>
+              )}
+              {isPremade && (
+                <span className="rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap bg-purple-500/20 text-purple-700 dark:text-purple-400">
+                  Premade
                 </span>
               )}
               {location === 'tincture' && (
