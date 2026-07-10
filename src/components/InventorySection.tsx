@@ -471,10 +471,10 @@ export function InventorySection({ location, title, icon, description, searchQue
               key={item.id}
               item={item}
               batch={
-                !showBatchInfo
-                  ? null
-                  : location === 'tincture'
+                location === 'tincture'
                   ? maceratingBatchByHerbId.get(item.herb_id) ?? null
+                  : !showBatchInfo
+                  ? null
                   : (item.current_batch_id ? batchById.get(item.current_batch_id) : null) ?? activeBatchByHerbId.get(item.herb_id) ?? null
               }
               hasBackstock={location === 'clinic' && (item.status === 'low' || item.status === 'out') && herbHasBackstock(item)}
