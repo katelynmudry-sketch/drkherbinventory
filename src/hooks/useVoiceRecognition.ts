@@ -34,6 +34,9 @@ declare global {
 const INSECURE_CONTEXT_MESSAGE =
   "Voice input needs a secure (HTTPS) connection — try the GitHub Pages site, or run `npm run dev:https` locally.";
 
+const NETWORK_ERROR_MESSAGE =
+  "Microphone network error — your browser may be blocking speech recognition. Try enabling microphone permissions, or switch to Chrome/Safari.";
+
 interface VoiceRecognitionResult {
   transcript: string;
   alternatives: string[];
@@ -134,8 +137,8 @@ export function useVoiceRecognition(): VoiceRecognitionResult {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      if (event.error === 'network' && !isSecureContext) {
-        setError(INSECURE_CONTEXT_MESSAGE);
+      if (event.error === 'network') {
+        setError(isSecureContext ? NETWORK_ERROR_MESSAGE : INSECURE_CONTEXT_MESSAGE);
       }
       if (event.error === 'no-speech') {
         // handled by onend
