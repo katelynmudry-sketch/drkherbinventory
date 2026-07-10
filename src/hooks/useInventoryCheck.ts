@@ -7,8 +7,39 @@ export interface AvailabilityInfo {
   tinctureReadyAt?: string | null;
 }
 
+// Core name matcher: exact (case-insensitive) → prefix → typo-tolerant
+// (first-6-characters) match. Returns the matching candidate name as given.
+export function matchHerbName(targetName: string, candidateNames: string[]): string | undefined {
+  const target = targetName.toLowerCase().trim();
+  if (!target) return undefined;
+
+  let prefixMatch: string | undefined;
+  let typoMatch: string | undefined;
+  for (const raw of candidateNames) {
+    const name = raw.toLowerCase().trim();
+    if (name === target) return raw;
+    if (!prefixMatch && (name.startsWith(target) || target.startsWith(name))) {
+      prefixMatch = raw;
+    }
+    if (!typoMatch && target.length >= 5 && name.length >= 5 && target.slice(0, 6) === name.slice(0, 6)) {
+      typoMatch = raw;
+    }
+  }
+  return prefixMatch ?? typoMatch;
+}
+
+// Generic version of matchHerbName for any candidate shape with a herb_name field.
+export function findHerbNameMatch<T extends { herb_name: string }>(
+  targetName: string,
+  candidates: T[]
+): T | undefined {
+  const byName = new Map(candidates.map(c => [c.herb_name, c]));
+  const matchedName = matchHerbName(targetName, candidates.map(c => c.herb_name));
+  return matchedName ? byName.get(matchedName) : undefined;
+}
+
 // Matches an inventory item to its counterpart in another location's item list,
-// by herb_id first, then by display name (exact, prefix, or typo-tolerant first-6-chars).
+// by herb_id first, then by display name via matchHerbName.
 export function findMatchingInventoryItem(
   target: InventoryItem,
   candidates: InventoryItem[]
@@ -20,20 +51,10 @@ export function findMatchingInventoryItem(
   const targetName = getDisplayName(target.herbs).toLowerCase().trim();
   if (!targetName) return undefined;
 
-  let prefixMatch: InventoryItem | undefined;
-  let typoMatch: InventoryItem | undefined;
-  for (const candidate of candidates) {
-    if (!candidate.herbs) continue;
-    const name = getDisplayName(candidate.herbs).toLowerCase().trim();
-    if (name === targetName) return candidate;
-    if (!prefixMatch && (name.startsWith(targetName) || targetName.startsWith(name))) {
-      prefixMatch = candidate;
-    }
-    if (!typoMatch && targetName.length >= 5 && name.length >= 5 && targetName.slice(0, 6) === name.slice(0, 6)) {
-      typoMatch = candidate;
-    }
-  }
-  return prefixMatch ?? typoMatch;
+  const named = candidates.filter((c): c is InventoryItem & { herbs: NonNullable<InventoryItem['herbs']> } => !!c.herbs);
+  const byName = new Map(named.map(c => [getDisplayName(c.herbs).toLowerCase().trim(), c]));
+  const matchedKey = matchHerbName(targetName, named.map(c => getDisplayName(c.herbs).toLowerCase().trim()));
+  return matchedKey ? byName.get(matchedKey) : undefined;
 }
 
 export async function checkHerbAvailability(herbId: string, excludeLocation?: InventoryLocation): Promise<AvailabilityInfo[]> {
