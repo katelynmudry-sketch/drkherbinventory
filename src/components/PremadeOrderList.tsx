@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ChevronDown, ChevronUp, Package, Trash2, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Package, Trash2, CheckCircle2, Pin, Sparkles, Plus, ShoppingCart } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ import {
   useTincturePriceHerbs,
   lookupTincturePrice,
   BottleSizeMl,
-  PremadeTincture,
 } from '@/hooks/usePremadeTinctures';
 import { toast } from 'sonner';
 
@@ -26,8 +25,37 @@ function fmt(n: number) {
   return `$${n.toFixed(2)}`;
 }
 
+type ManagedHerb = {
+  key: string;
+  herbName: string;
+  clinicStatus: string | null;
+  isPinned: boolean;
+  premadeId?: string;
+  defaultSize: BottleSizeMl;
+};
+
+function StatusBadge({ status }: { status: string | null }) {
+  if (!status) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    out:     { label: 'Out',     cls: 'bg-red-500/20 text-red-700 dark:text-red-400' },
+    low:     { label: 'Low',     cls: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400' },
+    full:    { label: 'Full',    cls: 'bg-green-500/20 text-green-700 dark:text-green-400' },
+    ordered: { label: 'Ordered', cls: 'bg-blue-500/20 text-blue-700 dark:text-blue-400' },
+  };
+  const s = map[status];
+  if (!s) return null;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
 export function PremadeOrderList() {
   const { data: clinicInventory = [] } = useInventory('clinic');
+  const { data: bulkInventory = [] } = useInventory('bulk');
+  const { data: bulkBackstockInventory = [] } = useInventory('bulk_backstock');
+  const { data: bulkClinicInventory = [] } = useInventory('bulk_clinic');
   const { data: herbs = [] } = useHerbs();
   const { data: premadeTinctures = [] } = usePremadeTinctures();
   const { data: priceTiers = [] } = useTincturePriceTiers();
@@ -37,7 +65,7 @@ export function PremadeOrderList() {
   const deletePremade = useDeletePremadeTincture();
 
   const [sizeOverrides, setSizeOverrides] = useState<Record<string, BottleSizeMl>>({});
-  const [showManage, setShowManage] = useState(false);
+  const [orderedKeys, setOrderedKeys] = useState<Set<string>>(new Set());
   const [showReference, setShowReference] = useState(false);
   const [addHerbValue, setAddHerbValue] = useState('');
   const [minimum, setMinimum] = useState<number>(() => {
@@ -50,36 +78,92 @@ export function PremadeOrderList() {
     localStorage.setItem(MINIMUM_STORAGE_KEY, String(value));
   };
 
-  // Clinic items keyed by their display name for fuzzy herb-name lookups
+  const toggleOrder = (key: string) => {
+    setOrderedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Herb IDs that have any bulk stock entry
+  const bulkHerbIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of [...bulkInventory, ...bulkBackstockInventory, ...bulkClinicInventory]) {
+      ids.add(item.herb_id);
+    }
+    return ids;
+  }, [bulkInventory, bulkBackstockInventory, bulkClinicInventory]);
+
+  const pinnedHerbNames = useMemo(
+    () => new Set(premadeTinctures.map(p => p.herb_name)),
+    [premadeTinctures]
+  );
+
   const clinicByDisplayName = useMemo(() => {
     return clinicInventory
       .filter((c): c is InventoryItem & { herbs: NonNullable<InventoryItem['herbs']> } => !!c.herbs)
       .map(c => ({ herb_name: getDisplayName(c.herbs), item: c }));
   }, [clinicInventory]);
 
-  // Premade herbs whose clinic status is low/out
-  const needsOrder = useMemo(() => {
-    return premadeTinctures
-      .map(p => ({ premade: p, clinicItem: findHerbNameMatch(p.herb_name, clinicByDisplayName)?.item ?? null }))
-      .filter((row): row is { premade: PremadeTincture; clinicItem: InventoryItem } =>
-        !!row.clinicItem && (row.clinicItem.status === 'low' || row.clinicItem.status === 'out')
-      );
-  }, [premadeTinctures, clinicByDisplayName]);
+  // Auto-detected: clinic herbs with no bulk stock anywhere, not already pinned
+  const autoDetectedClinicItems = useMemo(() => {
+    return clinicInventory
+      .filter((item): item is InventoryItem & { herbs: NonNullable<InventoryItem['herbs']> } => !!item.herbs)
+      .filter(item => !bulkHerbIds.has(item.herb_id))
+      .filter(item => !pinnedHerbNames.has(getDisplayName(item.herbs)));
+  }, [clinicInventory, bulkHerbIds, pinnedHerbNames]);
 
-  const rows = needsOrder.map(({ premade, clinicItem }) => {
-    const size = sizeOverrides[premade.id] ?? (premade.default_size_ml as BottleSizeMl | null) ?? 500;
-    const price = lookupTincturePrice(premade.herb_name, priceHerbs, priceTiers, size);
-    return { premade, clinicItem, size, price };
-  });
+  // Unified list: pinned premade + auto-detected
+  const allManagedHerbs = useMemo((): ManagedHerb[] => {
+    const items: ManagedHerb[] = [];
 
-  const total = rows.reduce((sum, r) => sum + (r.price ?? 0), 0);
+    for (const p of premadeTinctures) {
+      const clinicMatch = findHerbNameMatch(p.herb_name, clinicByDisplayName);
+      items.push({
+        key: p.id,
+        herbName: p.herb_name,
+        clinicStatus: clinicMatch?.item?.status ?? null,
+        isPinned: true,
+        premadeId: p.id,
+        defaultSize: (p.default_size_ml as BottleSizeMl | null) ?? 500,
+      });
+    }
+
+    for (const item of autoDetectedClinicItems) {
+      items.push({
+        key: item.herb_id,
+        herbName: getDisplayName(item.herbs),
+        clinicStatus: item.status,
+        isPinned: false,
+        defaultSize: 500,
+      });
+    }
+
+    return items;
+  }, [premadeTinctures, autoDetectedClinicItems, clinicByDisplayName]);
+
+  // Herbs explicitly added to the order, with resolved size + price
+  const orderedItems = useMemo(() => {
+    return allManagedHerbs
+      .filter(h => orderedKeys.has(h.key))
+      .map(h => {
+        const size = sizeOverrides[h.key] ?? h.defaultSize;
+        const price = lookupTincturePrice(h.herbName, priceHerbs, priceTiers, size);
+        return { ...h, size, price };
+      });
+  }, [allManagedHerbs, orderedKeys, sizeOverrides, priceHerbs, priceTiers]);
+
+  const total = orderedItems.reduce((sum, r) => sum + (r.price ?? 0), 0);
   const readyToOrder = total >= minimum;
 
-  const existingHerbNames = new Set(premadeTinctures.map(p => p.herb_name));
-  const availableHerbs = herbs
-    .map(h => getDisplayName(h))
-    .filter(name => !existingHerbNames.has(name))
-    .sort();
+  const handleSizeChange = async (herb: ManagedHerb, sizeMl: BottleSizeMl) => {
+    setSizeOverrides(prev => ({ ...prev, [herb.key]: sizeMl }));
+    if (herb.isPinned && herb.premadeId) {
+      await updatePremade.mutateAsync({ id: herb.premadeId, default_size_ml: sizeMl });
+    }
+  };
 
   const handleAdd = async (herbName: string) => {
     if (!herbName) return;
@@ -92,112 +176,204 @@ export function PremadeOrderList() {
     }
   };
 
+  const handlePin = async (herbName: string) => {
+    try {
+      await addPremade.mutateAsync({ herb_name: herbName });
+      toast.success(`Pinned ${herbName} as always-premade`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to pin herb');
+    }
+  };
+
+  const handleDelete = async (id: string, herbName: string) => {
+    try {
+      await deletePremade.mutateAsync(id);
+      setOrderedKeys(prev => { const next = new Set(prev); next.delete(id); return next; });
+      toast.success(`Removed ${herbName} from premade list`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to remove herb');
+    }
+  };
+
+  // Dropdown: inventory + price list herbs, deduped, excluding already pinned
+  const availableHerbs = useMemo(() => {
+    const pinnedNorm = new Set(premadeTinctures.map(p => p.herb_name.toLowerCase().replace(/['.]/g, '').trim()));
+    const seen = new Set<string>();
+    const names: string[] = [];
+    const add = (name: string) => {
+      const key = name.toLowerCase().replace(/['.]/g, '').trim();
+      if (pinnedNorm.has(key) || seen.has(key)) return;
+      seen.add(key);
+      names.push(name);
+    };
+    for (const h of herbs) add(getDisplayName(h));
+    for (const ph of priceHerbs) add(ph.herb_name);
+    return names.sort();
+  }, [herbs, priceHerbs, premadeTinctures]);
+
   return (
     <Card className="mt-4">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Package className="h-4 w-4 text-purple-600" />
-          Premade Order List
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">Herbs ordered premade, not made in-house</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Package className="h-4 w-4 text-purple-600" />
+              Premade Order List
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Herbs ordered premade, not made in-house</p>
+          </div>
+          <Select value={addHerbValue} onValueChange={handleAdd}>
+            <SelectTrigger className="h-8 w-48 text-sm">
+              <SelectValue placeholder="Add herb to list…" />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {availableHerbs.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No premade herbs currently low/out.</p>
-        ) : (
-          <div className="space-y-2">
-            {rows.map(({ premade, clinicItem, size, price }) => (
-              <div key={premade.id} className="flex items-center gap-2 rounded-lg border p-2">
-                <span className="flex-1 text-sm font-medium truncate">{premade.herb_name}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-                  clinicItem.status === 'out' ? 'bg-red-500/20 text-red-700 dark:text-red-400' : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
-                }`}>
-                  {clinicItem.status === 'out' ? 'Out' : 'Low'}
-                </span>
-                <Select
-                  value={String(size)}
-                  onValueChange={async (v) => {
-                    const sizeMl = parseInt(v) as BottleSizeMl;
-                    setSizeOverrides(prev => ({ ...prev, [premade.id]: sizeMl }));
-                    await updatePremade.mutateAsync({ id: premade.id, default_size_ml: sizeMl });
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-24 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SIZES.map(s => <SelectItem key={s} value={String(s)}>{s}ml</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <span className="w-16 text-right text-sm font-semibold text-primary">
-                  {price !== null ? fmt(price) : <span className="text-xs text-muted-foreground">no price</span>}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Order minimum:</span>
-            <Input
-              type="number"
-              step="1"
-              value={minimum}
-              onChange={(e) => updateMinimum(parseFloat(e.target.value) || 0)}
-              className="h-8 w-24 text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold">Total: {fmt(total)}</span>
-            {readyToOrder ? (
-              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-green-500/20 text-green-700 dark:text-green-400">
-                <CheckCircle2 className="h-3 w-3" />
-                Ready to order
-              </span>
+      <CardContent>
+        <div className="flex flex-col lg:flex-row gap-4">
+
+          {/* Left: unified premade herb list */}
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {allManagedHerbs.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No premade herbs yet. Add one above.</p>
             ) : (
-              <span className="text-xs text-muted-foreground">{fmt(minimum - total)} more to reach minimum</span>
+              allManagedHerbs.map(herb => {
+                const size = sizeOverrides[herb.key] ?? herb.defaultSize;
+                const price = lookupTincturePrice(herb.herbName, priceHerbs, priceTiers, size);
+                const inOrder = orderedKeys.has(herb.key);
+
+                return (
+                  <div
+                    key={herb.key}
+                    className={`flex items-center gap-2 rounded-lg border p-2 ${!herb.isPinned ? 'border-dashed' : ''}`}
+                  >
+                    {/* Icon */}
+                    {herb.isPinned
+                      ? <Pin className="h-3 w-3 text-purple-500 shrink-0" />
+                      : <Sparkles className="h-3 w-3 text-purple-400 shrink-0" title="Auto-detected: no bulk stock" />
+                    }
+
+                    {/* Name */}
+                    <span className="flex-1 text-sm font-medium truncate min-w-0">{herb.herbName}</span>
+
+                    {/* Clinic status */}
+                    <StatusBadge status={herb.clinicStatus} />
+
+                    {/* Size selector */}
+                    <Select
+                      value={String(size)}
+                      onValueChange={(v) => handleSizeChange(herb, parseInt(v) as BottleSizeMl)}
+                    >
+                      <SelectTrigger className="h-7 w-20 text-xs shrink-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SIZES.map(s => <SelectItem key={s} value={String(s)}>{s}ml</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Price */}
+                    <span className="w-14 text-right text-sm font-semibold text-primary shrink-0">
+                      {price !== null ? fmt(price) : <span className="text-xs text-muted-foreground">—</span>}
+                    </span>
+
+                    {/* Add to order toggle */}
+                    <Button
+                      size="sm"
+                      variant={inOrder ? 'default' : 'outline'}
+                      className={`h-7 px-2 text-xs shrink-0 gap-1 ${inOrder ? 'bg-green-600 hover:bg-green-700 border-green-600 text-white' : ''}`}
+                      onClick={() => toggleOrder(herb.key)}
+                    >
+                      {inOrder
+                        ? <><CheckCircle2 className="h-3 w-3" /> Added</>
+                        : <><Plus className="h-3 w-3" /> Order</>
+                      }
+                    </Button>
+
+                    {/* Pin (auto) or delete (pinned) */}
+                    {herb.isPinned ? (
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-7 w-7 text-destructive/70 hover:text-destructive shrink-0"
+                        onClick={() => handleDelete(herb.premadeId!, herb.herbName)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    ) : (
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-7 w-7 text-purple-500 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950 shrink-0"
+                        title="Pin as always-premade"
+                        onClick={() => handlePin(herb.herbName)}
+                      >
+                        <Pin className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
-        </div>
 
-        <div className="mt-4 border-t pt-3">
-          <button
-            className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-            onClick={() => setShowManage(v => !v)}
-          >
-            Manage premade herbs
-            {showManage ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
-          {showManage && (
-            <div className="mt-3 space-y-2">
-              <Select value={addHerbValue} onValueChange={handleAdd}>
-                <SelectTrigger className="h-8 w-52 text-sm">
-                  <SelectValue placeholder="Add a herb…" />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {availableHerbs.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {premadeTinctures.map(p => (
-                <div key={p.id} className="flex items-center justify-between rounded border px-2 py-1.5">
-                  <span className="text-sm">{p.herb_name}</span>
-                  <Button
-                    size="icon" variant="ghost" className="h-6 w-6 text-destructive/70 hover:text-destructive"
-                    onClick={async () => {
-                      await deletePremade.mutateAsync(p.id);
-                      toast.success(`Removed ${p.herb_name} from premade list`);
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
+          {/* Right: order summary */}
+          <div className="lg:w-52 shrink-0 rounded-lg border bg-muted/30 p-3 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Order</span>
             </div>
-          )}
+
+            <div className="flex-1 min-h-[2rem]">
+              {orderedItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No herbs added yet</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {orderedItems.map(item => (
+                    <div key={item.key} className="flex items-center justify-between gap-2">
+                      <span className="text-xs truncate min-w-0">{item.herbName}</span>
+                      <span className="text-xs font-medium shrink-0 text-primary">
+                        {item.price !== null ? fmt(item.price) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Min:</span>
+                <Input
+                  type="number"
+                  step="1"
+                  value={minimum}
+                  onChange={(e) => updateMinimum(parseFloat(e.target.value) || 0)}
+                  className="h-7 w-full text-xs"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Subtotal</span>
+                <span className="text-sm font-bold">{fmt(total)}</span>
+              </div>
+              {orderedItems.length > 0 && (
+                readyToOrder ? (
+                  <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Ready to order
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{fmt(minimum - total)} to minimum</span>
+                )
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="mt-3 border-t pt-3">
+        {/* Price reference */}
+        <div className="mt-4 border-t pt-3">
           <button
             className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
             onClick={() => setShowReference(v => !v)}

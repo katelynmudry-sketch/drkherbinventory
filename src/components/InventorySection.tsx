@@ -240,13 +240,13 @@ export function InventorySection({ location, title, icon, description, searchQue
       const destinations: string[] = [];
       let bottlesUsed = 0;
       if (pressAlsoClinic) {
-        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full' });
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'clinic', status: 'full', current_batch_id: batch?.id ?? null });
         destinations.push('Clinic as Full');
         bottlesUsed++;
       }
       if (pressAlsoBackstock) {
         const size = pressBackstockSize && pressBackstockSize !== 'untagged' ? pressBackstockSize : null;
-        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size });
+        await setInventoryStatus.mutateAsync({ herb_id: item.herb_id, location: 'backstock', status: 'full', notes: size, current_batch_id: batch?.id ?? null });
         destinations.push('Backstock');
         bottlesUsed++;
       }
@@ -712,9 +712,16 @@ function InventoryItemRow({
                 ) : null;
               })()}
               {batch && (
-                <p className="text-xs font-mono text-muted-foreground/80 truncate leading-tight">
-                  Batch {batch.batch_number}
-                </p>
+                <>
+                  <p className="text-xs font-mono text-muted-foreground/80 truncate leading-tight">
+                    Batch {batch.batch_number}
+                  </p>
+                  {batch.bulk_batches?.batch_number && (
+                    <p className="text-xs font-mono text-muted-foreground/60 truncate leading-tight">
+                      Lot&nbsp;&nbsp;&nbsp;{batch.bulk_batches.batch_number}
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}

@@ -99,6 +99,29 @@ export function useCreateTinctureBatch() {
 
       const status = input.status ?? 'macerating';
 
+      // 0. If a live batch already exists for this herb, reuse it instead of
+      //    hitting the tincture_batches_one_live_per_herb unique constraint.
+      //    This happens when an herb has an active (pressed) batch from
+      //    backstock and is then added to the tincture jar via voice.
+      if (status === 'macerating') {
+        const { data: existingLive } = await supabase
+          .from('tincture_batches')
+          .select('*, herbs(*), bulk_batches(id, batch_number, received_date)')
+          .eq('user_id', user.id)
+          .eq('herb_id', input.herb_id)
+          .in('status', ['macerating', 'active'])
+          .maybeSingle();
+        if (existingLive) {
+          await supabase
+            .from('inventory')
+            .update({ current_batch_id: (existingLive as TinctureBatch).id })
+            .eq('user_id', user.id)
+            .eq('herb_id', input.herb_id)
+            .eq('location', 'tincture');
+          return existingLive as TinctureBatch;
+        }
+      }
+
       // 1. Generate batch number via DB function
       const { data: batchNumber, error: fnError } = await supabase
         .rpc('generate_batch_number', {
@@ -196,13 +219,20 @@ export function usePressBatch() {
         .eq('id', batchId);
       if (pressErr) throw pressErr;
 
-      // 3. Tag backstock inventory rows for this herb with this batch
+      // 3. Tag backstock and clinic inventory rows for this herb with this batch
       await supabase
         .from('inventory')
         .update({ current_batch_id: batchId })
         .eq('user_id', user.id)
         .eq('herb_id', batch.herb_id)
         .eq('location', 'backstock');
+
+      await supabase
+        .from('inventory')
+        .update({ current_batch_id: batchId })
+        .eq('user_id', user.id)
+        .eq('herb_id', batch.herb_id)
+        .eq('location', 'clinic');
 
       // 4. Keep only 2 active batches — archive oldest if there are now 3+
       const { data: activeBatches, error: listErr } = await supabase

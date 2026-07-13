@@ -7,16 +7,20 @@ export interface AvailabilityInfo {
   tinctureReadyAt?: string | null;
 }
 
-// Core name matcher: exact (case-insensitive) → prefix → typo-tolerant
+function norm(s: string): string {
+  return s.toLowerCase().replace(/['.]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Core name matcher: exact (case-insensitive, punctuation-normalized) → prefix → typo-tolerant
 // (first-6-characters) match. Returns the matching candidate name as given.
 export function matchHerbName(targetName: string, candidateNames: string[]): string | undefined {
-  const target = targetName.toLowerCase().trim();
+  const target = norm(targetName);
   if (!target) return undefined;
 
   let prefixMatch: string | undefined;
   let typoMatch: string | undefined;
   for (const raw of candidateNames) {
-    const name = raw.toLowerCase().trim();
+    const name = norm(raw);
     if (name === target) return raw;
     if (!prefixMatch && (name.startsWith(target) || target.startsWith(name))) {
       prefixMatch = raw;

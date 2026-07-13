@@ -212,11 +212,6 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
           Backstock
         </span>
       )}
-      {bulkOut && (
-        <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-red-500/20 text-red-700 dark:text-red-400">
-          Bulk OUT
-        </span>
-      )}
       {premade && (
         <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-purple-500/20 text-purple-700 dark:text-purple-400">
           Premade
