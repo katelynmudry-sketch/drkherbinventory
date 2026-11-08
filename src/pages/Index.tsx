@@ -25,6 +25,9 @@ import { toast } from 'sonner';
 // Billing UI is built but hidden for now — flip to true to re-enable the "Manage Billing" button.
 const BILLING_ENABLED = false;
 
+// Voice controls are temporarily hidden — flip to true to bring back the Voice Controls section.
+const VOICE_CONTROLS_ENABLED = false;
+
 const Index = () => {
   const { signOut } = useAuth();
   const { data: allInventory = [] } = useInventory();
@@ -131,14 +134,16 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Voice Section */}
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">Voice Controls</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <VoiceQuery activeTab={activeTab} />
-            <VoiceHerbAdd activeTab={activeTab} />
-            <VoiceAssistant activeTab={activeTab} />
-          </div>
-        </section>
+        {VOICE_CONTROLS_ENABLED && (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold">Voice Controls</h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <VoiceQuery activeTab={activeTab} />
+              <VoiceHerbAdd activeTab={activeTab} />
+              <VoiceAssistant activeTab={activeTab} />
+            </div>
+          </section>
+        )}
 
         {batchTrackingMode && <BatchTrackingPanel activeTab={activeTab} />}
 
