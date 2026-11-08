@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { isUsdSupplier, usdToCad } from '@/lib/currency';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,9 @@ export interface SharedHerbPricing {
 /** Personal or shared pricing row unified for display */
 export interface MergedHerbPricing extends HerbPricing {
   source: PricingSource;
+  // Original USD list prices, set only for USD-quoted suppliers (price_per_lb / package_price hold CAD)
+  price_per_lb_usd?: number | null;
+  package_price_usd?: number | null;
 }
 
 export interface HerbReorderQty {
@@ -329,14 +333,18 @@ export function useMergedHerbPricing() {
       const key = `${p.herb_name.toLowerCase()}|${canonicalSupplierId}`;
       if (!personalKeys.has(key)) {
         const sharedSupplier = p.shared_suppliers;
+        // Shared price lists from Mountain Rose / Pacific Botanicals are in USD → convert to CAD
+        const isUsd = isUsdSupplier(sharedSupplier?.name);
         result.push({
           id: p.id,
           user_id: '',
           herb_name: p.herb_name,
           supplier_id: canonicalSupplierId,
-          price_per_lb: p.price_per_lb,
+          price_per_lb: isUsd ? usdToCad(Number(p.price_per_lb)) : p.price_per_lb,
           package_size_g: p.package_size_g,
-          package_price: p.package_price,
+          package_price: isUsd && p.package_price != null ? usdToCad(Number(p.package_price)) : p.package_price,
+          price_per_lb_usd: isUsd ? Number(p.price_per_lb) : null,
+          package_price_usd: isUsd && p.package_price != null ? Number(p.package_price) : null,
           supplier_item_code: p.supplier_item_code,
           supplier_item_name: p.supplier_item_name,
           notes: p.notes,

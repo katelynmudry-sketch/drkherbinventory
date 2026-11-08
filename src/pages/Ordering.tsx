@@ -28,6 +28,7 @@ import {
   type OrderSuggestion,
 } from '@/hooks/usePricing';
 import { HERB_LIST } from '@/lib/herbCorrection';
+import { USD_TO_CAD_RATE } from '@/lib/currency';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -654,6 +655,9 @@ const Ordering = () => {
                               return (
                                 <td key={s.id} className={`px-3 py-2 text-right ${isMin ? 'text-green-600 font-semibold' : 'text-muted-foreground'}`}>
                                   {p ? `$${Number(p.price_per_lb).toFixed(2)}` : '—'}
+                                  {p?.price_per_lb_usd != null && (
+                                    <div className="text-[10px] font-normal opacity-70">US${Number(p.price_per_lb_usd).toFixed(2)}</div>
+                                  )}
                                 </td>
                               );
                             })}
@@ -961,6 +965,7 @@ const Ordering = () => {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Pre-loaded supplier data. To override a price, add a personal supplier with the same name and enter your own pricing above.
+                    Mountain Rose and Pacific Botanicals lists are published in USD and shown in CAD (converted at {USD_TO_CAD_RATE.toFixed(2)}) with the original USD price beside it.
                   </p>
                   {suppliers.filter(s => s.source === 'shared').map(supplier => {
                     const rows = pricing.filter(p => p.supplier_id === supplier.id && p.source === 'shared')
@@ -991,9 +996,14 @@ const Ordering = () => {
                               {rows.map(row => (
                                 <tr key={row.id} className="border-b last:border-0">
                                   <td className="px-3 py-1.5 font-medium">{row.herb_name}</td>
-                                  <td className="px-3 py-1.5">${Number(row.price_per_lb).toFixed(2)}</td>
+                                  <td className="px-3 py-1.5">
+                                    ${Number(row.price_per_lb).toFixed(2)}
+                                    {row.price_per_lb_usd != null && (
+                                      <span className="ml-1.5 text-xs text-muted-foreground">(US${Number(row.price_per_lb_usd).toFixed(2)})</span>
+                                    )}
+                                  </td>
                                   <td className="px-3 py-1.5 text-muted-foreground">
-                                    {row.package_size_g ? `${row.package_size_g}g @ ${fmt(Number(row.package_price ?? 0))}` : '—'}
+                                    {row.package_size_g ? `${row.package_size_g}g @ ${fmt(Number(row.package_price ?? 0))}${row.package_price_usd != null ? ` (US$${Number(row.package_price_usd).toFixed(2)})` : ''}` : '—'}
                                   </td>
                                   <td className="px-3 py-1.5 text-right text-muted-foreground text-xs">
                                     {row.last_updated ? new Date(row.last_updated).toLocaleDateString('en-CA') : '—'}
