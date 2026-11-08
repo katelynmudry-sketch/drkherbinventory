@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { isUsdSupplier, usdToCad } from '@/lib/currency';
+import { estimateShipping } from '@/lib/shipping';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,13 +90,24 @@ export interface OrderHerbLine {
 export interface SupplierOrder {
   supplier: Supplier;
   herbs: OrderHerbLine[];
+  /** Herbs only (no shipping) */
+  subtotal: number;
+  /** Shipping + customs estimate for this supplier order */
+  shipping: number;
+  shippingNote: string;
+  /** subtotal + shipping */
   total: number;
 }
 
 export interface OrderSuggestion {
   orders: SupplierOrder[];
+  /** Herbs + shipping across all orders */
   grandTotal: number;
+  herbsTotal: number;
+  shippingTotal: number;
   uncoveredHerbs: string[];
+  /** Extra cost (incl. shipping) had each herb simply gone to its cheapest supplier; 0 when same plan */
+  savingsVsCheapestPerHerb: number;
 }
 
 // ─── Suppliers ────────────────────────────────────────────────────────────────
@@ -318,10 +330,20 @@ export function useMergedHerbPricing() {
       sharedToCanonical.set(s.id, personal?.id ?? s.id);
     }
 
-    const result: MergedHerbPricing[] = personalPricing.map(p => ({
-      ...p,
-      source: 'personal' as PricingSource,
-    }));
+    // Personal rows for USD-quoted suppliers (imported from their price lists) are stored in USD
+    const supplierNameById = new Map(personalSuppliers.map(s => [s.id, s.name]));
+    const result: MergedHerbPricing[] = personalPricing.map(p => {
+      const isUsd = isUsdSupplier(supplierNameById.get(p.supplier_id) ?? p.suppliers?.name);
+      if (!isUsd) return { ...p, source: 'personal' as PricingSource };
+      return {
+        ...p,
+        source: 'personal' as PricingSource,
+        price_per_lb: usdToCad(Number(p.price_per_lb)),
+        package_price: p.package_price != null ? usdToCad(Number(p.package_price)) : p.package_price,
+        price_per_lb_usd: Number(p.price_per_lb),
+        package_price_usd: p.package_price != null ? Number(p.package_price) : null,
+      };
+    });
 
     // Keys covered by personal pricing (herb_name_lower | canonical_supplier_id)
     const personalKeys = new Set(
@@ -416,9 +438,18 @@ function formatPackageInfo(qtyLb: number, packageSizeG: number): string {
   return `${n}× ${packageSizeG}g`;
 }
 
+interface HerbOption {
+  supplierId: string;
+  line: OrderHerbLine;
+}
+
 /**
- * Compute optimized order split: each herb goes to cheapest available supplier.
- * Returns one order per supplier.
+ * Compute the cheapest way to place the order INCLUDING shipping/customs.
+ *
+ * Shipping is a flat cost per supplier order, so the cheapest plan is not always
+ * "each herb from its cheapest supplier". We try every combination of suppliers
+ * (a handful at most), send each herb to its cheapest supplier within that combination,
+ * add that combination's shipping, and keep the lowest total. Ties go to fewer orders.
  */
 export function computeOrderSuggestion(
   outHerbNames: string[],
@@ -429,7 +460,6 @@ export function computeOrderSuggestion(
   const reorderMap = new Map(reorderQtys.map(r => [r.herb_name, r.quantity_lb]));
   const supplierMap = new Map(suppliers.map(s => [s.id, s]));
 
-  // Group pricing by herb_name (lowercased for case-insensitive lookup)
   const pricingByHerb = new Map<string, HerbPricing[]>();
   for (const p of pricing) {
     const key = p.herb_name.toLowerCase().trim();
@@ -438,53 +468,89 @@ export function computeOrderSuggestion(
     pricingByHerb.set(key, list);
   }
 
-  const ordersMap = new Map<string, SupplierOrder>(); // supplier_id → order
+  // Every purchasable option per herb, with its full line cost for the quantity needed
+  const optionsByHerb = new Map<string, HerbOption[]>();
   const uncoveredHerbs: string[] = [];
 
   for (const herbName of outHerbNames) {
-    const options = pricingByHerb.get(herbName.toLowerCase().trim()) ?? [];
-    if (options.length === 0) {
-      uncoveredHerbs.push(herbName);
-      continue;
-    }
-
-    // Find cheapest supplier for this herb
-    const cheapest = options.reduce((a, b) => a.price_per_lb <= b.price_per_lb ? a : b);
-    const supplier = supplierMap.get(cheapest.supplier_id);
-    if (!supplier) {
-      uncoveredHerbs.push(herbName);
-      continue;
-    }
-
+    const rows = pricingByHerb.get(herbName.toLowerCase().trim()) ?? [];
     const qtyLb = reorderMap.get(herbName) ?? 1;
-    let subtotal = qtyLb * cheapest.price_per_lb;
-    let packageInfo: string | null = null;
-
-    // For Clef (package-based), calculate actual packages needed
-    if (cheapest.package_size_g && cheapest.package_price) {
-      const pkgsNeeded = packagesNeeded(qtyLb, cheapest.package_size_g);
-      subtotal = pkgsNeeded * cheapest.package_price;
-      packageInfo = formatPackageInfo(qtyLb, cheapest.package_size_g);
+    const options: HerbOption[] = [];
+    for (const row of rows) {
+      if (!supplierMap.has(row.supplier_id)) continue;
+      let subtotal = qtyLb * row.price_per_lb;
+      let packageInfo: string | null = null;
+      if (row.package_size_g && row.package_price) {
+        subtotal = packagesNeeded(qtyLb, row.package_size_g) * row.package_price;
+        packageInfo = formatPackageInfo(qtyLb, row.package_size_g);
+      }
+      options.push({
+        supplierId: row.supplier_id,
+        line: { herbName, qtyLb, pricePerLb: row.price_per_lb, subtotal, packageInfo },
+      });
     }
-
-    const line: OrderHerbLine = {
-      herbName,
-      qtyLb,
-      pricePerLb: cheapest.price_per_lb,
-      subtotal,
-      packageInfo,
-    };
-
-    if (!ordersMap.has(supplier.id)) {
-      ordersMap.set(supplier.id, { supplier, herbs: [], total: 0 });
-    }
-    const order = ordersMap.get(supplier.id)!;
-    order.herbs.push(line);
-    order.total += subtotal;
+    if (options.length === 0) uncoveredHerbs.push(herbName);
+    else optionsByHerb.set(herbName, options);
   }
 
-  const orders = Array.from(ordersMap.values()).sort((a, b) => b.total - a.total);
-  const grandTotal = orders.reduce((sum, o) => sum + o.total, 0);
+  const coveredHerbs = Array.from(optionsByHerb.keys());
+  if (coveredHerbs.length === 0) {
+    return { orders: [], grandTotal: 0, herbsTotal: 0, shippingTotal: 0, uncoveredHerbs, savingsVsCheapestPerHerb: 0 };
+  }
 
-  return { orders, grandTotal, uncoveredHerbs };
+  /** Build the order plan when each herb is sent to its cheapest option among `allowed` suppliers */
+  const buildPlan = (allowed: Set<string> | null): SupplierOrder[] | null => {
+    const bySupplier = new Map<string, OrderHerbLine[]>();
+    for (const herbName of coveredHerbs) {
+      const options = optionsByHerb.get(herbName)!.filter(o => !allowed || allowed.has(o.supplierId));
+      if (options.length === 0) return null; // this supplier set can't cover every herb
+      const best = options.reduce((a, b) => (a.line.subtotal <= b.line.subtotal ? a : b));
+      const list = bySupplier.get(best.supplierId) ?? [];
+      list.push(best.line);
+      bySupplier.set(best.supplierId, list);
+    }
+    return Array.from(bySupplier.entries()).map(([supplierId, herbs]) => {
+      const supplier = supplierMap.get(supplierId)!;
+      const subtotal = herbs.reduce((sum, l) => sum + l.subtotal, 0);
+      const ship = estimateShipping(supplier.name, subtotal);
+      return { supplier, herbs, subtotal, shipping: ship.cost, shippingNote: ship.note, total: subtotal + ship.cost };
+    });
+  };
+
+  const planTotal = (plan: SupplierOrder[]) => plan.reduce((sum, o) => sum + o.total, 0);
+
+  // Baseline: cheapest supplier per herb, ignoring shipping when choosing
+  const baseline = buildPlan(null)!;
+
+  // Candidate supplier set = every supplier that can sell at least one herb
+  const candidateIds = Array.from(new Set(coveredHerbs.flatMap(h => optionsByHerb.get(h)!.map(o => o.supplierId))));
+
+  let best = baseline;
+  let bestTotal = planTotal(baseline);
+
+  if (candidateIds.length <= 10) {
+    for (let mask = 1; mask < 1 << candidateIds.length; mask++) {
+      const allowed = new Set(candidateIds.filter((_, i) => mask & (1 << i)));
+      const plan = buildPlan(allowed);
+      if (!plan) continue;
+      const total = planTotal(plan);
+      if (total < bestTotal - 0.005 || (Math.abs(total - bestTotal) <= 0.005 && plan.length < best.length)) {
+        best = plan;
+        bestTotal = total;
+      }
+    }
+  }
+
+  const orders = best.sort((a, b) => b.total - a.total);
+  const herbsTotal = orders.reduce((sum, o) => sum + o.subtotal, 0);
+  const shippingTotal = orders.reduce((sum, o) => sum + o.shipping, 0);
+
+  return {
+    orders,
+    grandTotal: herbsTotal + shippingTotal,
+    herbsTotal,
+    shippingTotal,
+    uncoveredHerbs,
+    savingsVsCheapestPerHerb: Math.max(0, planTotal(baseline) - (herbsTotal + shippingTotal)),
+  };
 }

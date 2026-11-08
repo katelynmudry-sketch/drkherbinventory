@@ -28,7 +28,7 @@ import {
   type OrderSuggestion,
 } from '@/hooks/usePricing';
 import { HERB_LIST } from '@/lib/herbCorrection';
-import { USD_TO_CAD_RATE } from '@/lib/currency';
+import { USD_TO_CAD_RATE, isUsdSupplier, usdToCad } from '@/lib/currency';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ function AddPriceRow({ supplierId, existingHerbs, onClose }: {
 
 // ─── Supplier Pricing Table ───────────────────────────────────────────────────
 
-function SupplierPricingTable({ supplierId, pricing }: { supplierId: string; pricing: HerbPricing[] }) {
+function SupplierPricingTable({ supplierId, pricing, usd = false }: { supplierId: string; pricing: HerbPricing[]; usd?: boolean }) {
   const [addingRow, setAddingRow] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState('');
@@ -254,8 +254,11 @@ function SupplierPricingTable({ supplierId, pricing }: { supplierId: string; pri
                 ) : (
                   <button className="underline decoration-dashed underline-offset-2 hover:text-primary"
                     onClick={() => { setEditPrice(String(row.price_per_lb)); setEditingId(row.id); }}>
-                    ${Number(row.price_per_lb).toFixed(2)}
+                    {usd ? `US$${Number(row.price_per_lb).toFixed(2)}` : `$${Number(row.price_per_lb).toFixed(2)}`}
                   </button>
+                )}
+                {usd && editingId !== row.id && (
+                  <span className="ml-1.5 text-xs text-muted-foreground">(CA${usdToCad(Number(row.price_per_lb)).toFixed(2)})</span>
                 )}
               </td>
               <td className="px-3 py-1.5 text-muted-foreground">
@@ -391,7 +394,7 @@ const Ordering = () => {
 
   // Pricing lookup — keyed on lowercased herb_name for case-insensitive matching
   const pricingByHerb = useMemo(() => {
-    const map = new Map<string, Map<string, HerbPricing>>();
+    const map = new Map<string, Map<string, MergedHerbPricing>>();
     for (const p of pricing) {
       const key = p.herb_name.toLowerCase().trim();
       if (!map.has(key)) map.set(key, new Map());
@@ -855,6 +858,17 @@ const Ordering = () => {
                       ))}
                     </tbody>
                     <tfoot>
+                      <tr className="border-t">
+                        <td colSpan={4} className="py-1 text-right pr-3 text-muted-foreground">Herbs</td>
+                        <td className="py-1 text-right">{fmt(order.subtotal)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={4} className="py-1 text-right pr-3 text-muted-foreground">
+                          Shipping &amp; customs
+                          <div className="text-xs">{order.shippingNote}</div>
+                        </td>
+                        <td className="py-1 text-right align-top">{order.shipping > 0 ? fmt(order.shipping) : '—'}</td>
+                      </tr>
                       <tr className="border-t-2 border-border bg-muted/30">
                         <td colSpan={4} className="py-2 px-0 font-semibold text-right pr-3">Order Total</td>
                         <td className="py-2 text-right font-bold text-primary">{fmt(order.total)}</td>
@@ -883,9 +897,17 @@ const Ordering = () => {
             {suggestion.orders.length > 0 && (
               <div className="flex justify-end">
                 <div className="text-right">
-                  <p className="text-sm text-muted-foreground">Grand Total</p>
+                  <p className="text-sm text-muted-foreground">Grand Total (incl. shipping)</p>
                   <p className="text-2xl font-bold text-primary">{fmt(suggestion.grandTotal)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Herbs {fmt(suggestion.herbsTotal)} + shipping &amp; customs {fmt(suggestion.shippingTotal)}
+                  </p>
                   <p className="text-xs text-muted-foreground">{suggestion.orders.length} supplier order{suggestion.orders.length > 1 ? 's' : ''}</p>
+                  {suggestion.savingsVsCheapestPerHerb > 0 && (
+                    <p className="text-xs text-green-600 font-medium">
+                      Consolidated to save {fmt(suggestion.savingsVsCheapestPerHerb)} vs. splitting by cheapest price per herb
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -951,7 +973,7 @@ const Ordering = () => {
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                    <SupplierPricingTable supplierId={supplier.id} pricing={personalPricing} />
+                    <SupplierPricingTable supplierId={supplier.id} pricing={personalPricing} usd={isUsdSupplier(supplier.name)} />
                   </div>
                 ))
               )}
