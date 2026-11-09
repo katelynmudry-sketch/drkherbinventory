@@ -24,6 +24,9 @@ export type Database = {
           name: string
           notes: string | null
           pinyin_name: string | null
+          tincture_alcohol: string | null
+          tincture_ratio: string | null
+          plant_part: string | null
           preferred_name: 'common' | 'latin' | 'pinyin' | null
           updated_at: string
           user_id: string
@@ -37,6 +40,9 @@ export type Database = {
           name: string
           notes?: string | null
           pinyin_name?: string | null
+          tincture_alcohol?: string | null
+          tincture_ratio?: string | null
+          plant_part?: string | null
           preferred_name?: 'common' | 'latin' | 'pinyin' | null
           updated_at?: string
           user_id: string
@@ -50,6 +56,9 @@ export type Database = {
           name?: string
           notes?: string | null
           pinyin_name?: string | null
+          tincture_alcohol?: string | null
+          tincture_ratio?: string | null
+          plant_part?: string | null
           preferred_name?: 'common' | 'latin' | 'pinyin' | null
           updated_at?: string
           user_id?: string

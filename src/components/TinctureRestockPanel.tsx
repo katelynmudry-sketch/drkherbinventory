@@ -6,6 +6,7 @@ import { useTinctureBatches, TinctureBatch } from '@/hooks/useTinctureBatches';
 import { findMatchingInventoryItem, findHerbNameMatch } from '@/hooks/useInventoryCheck';
 import { usePremadeTinctures } from '@/hooks/usePremadeTinctures';
 import { getTinctureAlcohol } from '@/lib/tinctureAlcohol';
+import { HerbNameButton } from '@/components/HerbDetail';
 import { cn } from '@/lib/utils';
 
 export function TinctureRestockPanel() {
@@ -200,7 +201,7 @@ function RestockRow({ clinicItem, tinctureItem, batch, hasBackstock, needsAction
       "flex items-center justify-between gap-2 rounded px-2 py-1.5",
       needsAction ? "bg-red-500/5 border border-red-500/20" : "bg-background/60"
     )}>
-      <span className="text-sm font-medium truncate flex-1">{herbName}</span>
+      <span className="text-sm font-medium truncate flex-1"><HerbNameButton herb={clinicItem.herbs}>{herbName}</HerbNameButton></span>
       {alcohol && (
         <span className="text-xs whitespace-nowrap text-foreground">
           {alcohol}

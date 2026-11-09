@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppGate } from "@/components/AppGate";
 import { ActivityLogProvider } from "@/contexts/ActivityLogContext";
+import { HerbDetailProvider } from "@/components/HerbDetail";
 import { ActivityLogButton } from "@/components/ActivityLogButton";
 import Index from "./pages/Index";
 import Reports from "./pages/Reports";
@@ -21,6 +22,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <AppGate>
+            <HerbDetailProvider>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/reports" element={<Reports />} />
@@ -29,6 +31,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
             <ActivityLogButton />
+            </HerbDetailProvider>
           </AppGate>
         </BrowserRouter>
       </TooltipProvider>

@@ -20,6 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
 import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
+import { useHerbDetail } from '@/components/HerbDetail';
 import { toast } from 'sonner';
 
 const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }[]> = {
@@ -69,6 +70,7 @@ export function AddHerbDialog() {
   const { data: existingHerbs = [] } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
+  const { openHerb } = useHerbDetail();
 
   const isLbLocation = LB_LOCATIONS.has(location);
 
@@ -91,7 +93,7 @@ export function AddHerbDialog() {
   const exactMatch = existingHerbs.find(
     h => h.name.toLowerCase() === search.trim().toLowerCase()
   );
-  const isNewHerb = search.trim().length > 0 && !exactMatch && filteredHerbs.length === 0;
+  const isNewHerb = search.trim().length > 0 && !exactMatch;
 
   const stageHerb = (name: string, isNew: boolean) => {
     if (!name.trim()) return;
@@ -113,11 +115,13 @@ export function AddHerbDialog() {
     setIsProcessing(true);
 
     let successCount = 0;
+    let firstNewHerbId: string | null = null;
     for (const entry of staged) {
       try {
         let herb = existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
         if (!herb) {
           herb = await addHerb.mutateAsync({ name: entry.name });
+          if (!firstNewHerbId) firstNewHerbId = herb.id;
         }
 
         if (isLbLocation) {
@@ -161,6 +165,8 @@ export function AddHerbDialog() {
     setQuantity(1);
     setIsProcessing(false);
     setIsOpen(false);
+    // New herb created — go straight to its detail screen to fill in the rest
+    if (firstNewHerbId) openHerb(firstNewHerbId);
   };
 
   const handleClose = (open: boolean) => {
@@ -278,17 +284,18 @@ export function AddHerbDialog() {
                       )}
                     </button>
                   ))
-                ) : isNewHerb ? (
+                ) : null}
+                {isNewHerb && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-primary"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-primary border-t"
                     onClick={() => stageHerb(search.trim(), true)}
                     disabled={isProcessing}
                   >
                     <Plus className="inline h-3 w-3 mr-1" />
                     Add &ldquo;{search.trim()}&rdquo; as new herb
                   </button>
-                ) : null}
+                )}
               </div>
             )}
 

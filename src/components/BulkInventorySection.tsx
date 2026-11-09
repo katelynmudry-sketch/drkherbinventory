@@ -47,6 +47,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 import { useActivityLog } from '@/contexts/ActivityLogContext';
+import { HerbNameButton, useHerbDetail } from '@/components/HerbDetail';
 
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
@@ -69,6 +70,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
   const addHerb = useAddHerb();
+  const { openHerb } = useHerbDetail();
   const receiveBulkBatch = useReceiveBulkBatch();
   const { logActivity } = useActivityLog();
 
@@ -131,9 +133,11 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
     try {
       // If no existing herb is selected but user typed a name, create a new herb first
       let resolvedHerbId = selectedHerbId;
+      let createdHerbId: string | null = null;
       if (!resolvedHerbId && herbPickerSearch.trim()) {
         const newHerb = await addHerb.mutateAsync({ name: herbPickerSearch.trim() });
         resolvedHerbId = newHerb.id;
+        createdHerbId = newHerb.id;
       }
 
       if (!resolvedHerbId) return;
@@ -213,6 +217,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
       setHerbPickerSearch('');
       setIsAddDialogOpen(false);
       toast.success(existingBulk ? 'Bulk inventory updated' : 'Herb added to bulk inventory');
+      if (createdHerbId) openHerb(createdHerbId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save');
     }
@@ -1066,7 +1071,7 @@ function BulkItemCard({
                   .filter((n): n is string => !!n && n !== display);
                 return (
                   <>
-                    <p className="text-sm font-medium truncate leading-tight">{display}</p>
+                    <p className="text-sm font-medium truncate leading-tight"><HerbNameButton herb={item.herbs}>{display}</HerbNameButton></p>
                     {alts.length > 0 && (
                       <p className="text-xs text-muted-foreground truncate leading-tight">{alts.join(' · ')}</p>
                     )}
@@ -1643,6 +1648,7 @@ function ClinicBulkView({
   const addInventory = useAddInventory();
   const deleteInventory = useDeleteInventory();
   const addHerb = useAddHerb();
+  const { openHerb } = useHerbDetail();
   const { logActivity } = useActivityLog();
 
   const [search, setSearch] = useState('');
@@ -1777,9 +1783,11 @@ function ClinicBulkView({
 
     try {
       let resolvedHerbId = selectedHerbId;
+      let createdHerbId: string | null = null;
       if (!resolvedHerbId && herbPickerSearch.trim()) {
         const newHerb = await addHerb.mutateAsync({ name: herbPickerSearch.trim() });
         resolvedHerbId = newHerb.id;
+        createdHerbId = newHerb.id;
       }
       if (!resolvedHerbId) return;
 
@@ -1811,6 +1819,7 @@ function ClinicBulkView({
       setHerbPickerSearch('');
       setIsAddDialogOpen(false);
       toast.success(existing ? 'Clinic Bulk updated' : 'Herb added to Clinic Bulk');
+      if (createdHerbId) openHerb(createdHerbId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save');
     }
@@ -2107,7 +2116,7 @@ function ClinicBulkView({
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="flex-1 min-w-0">
                       {item.herbs && (
-                        <p className="text-sm font-medium truncate leading-tight">{getDisplayName(item.herbs)}</p>
+                        <p className="text-sm font-medium truncate leading-tight"><HerbNameButton herb={item.herbs}>{getDisplayName(item.herbs)}</HerbNameButton></p>
                       )}
                     </div>
                     <LbsBadge qty={qty} lowThreshold={herbThreshold} />

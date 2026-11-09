@@ -22,6 +22,7 @@ import {
   useUpdateInventory,
   useDeleteInventory,
   useUpdateHerb,
+  useAddHerb,
   useSetInventoryStatusForHerb,
   InventoryLocation,
   InventoryStatus,
@@ -31,6 +32,7 @@ import {
 import { usePressBatch, useTinctureBatches, useUpdateTinctureBatch, TinctureBatch } from '@/hooks/useTinctureBatches';
 import { checkHerbAvailability, findMatchingInventoryItem, findHerbNameMatch, AvailabilityInfo } from '@/hooks/useInventoryCheck';
 import { usePremadeTinctures } from '@/hooks/usePremadeTinctures';
+import { HerbNameButton, useHerbDetail } from '@/components/HerbDetail';
 import { AvailabilityAlert } from '@/components/AvailabilityAlert';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -59,6 +61,9 @@ export function InventorySection({ location, title, icon, description, searchQue
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const updateHerb = useUpdateHerb();
+  const addHerbMutation = useAddHerb();
+  const { openHerb } = useHerbDetail();
+  const [newHerbIds, setNewHerbIds] = useState<string[]>([]);
   const pressBatch = usePressBatch();
   const updateTinctureBatch = useUpdateTinctureBatch();
   const setInventoryStatus = useSetInventoryStatusForHerb();
@@ -140,6 +145,22 @@ export function InventorySection({ location, title, icon, description, searchQue
     };
     checkAvail();
   }, [selectedHerbId, selectedStatus, location]);
+  const trimmedAddSearch = addSearch.trim();
+  const hasExactAddMatch = herbs.some(h => h.name.toLowerCase() === trimmedAddSearch.toLowerCase());
+
+  const handleCreateNewHerb = async () => {
+    if (!trimmedAddSearch || hasExactAddMatch) return;
+    const name = trimmedAddSearch.charAt(0).toUpperCase() + trimmedAddSearch.slice(1);
+    try {
+      const created = await addHerbMutation.mutateAsync({ name });
+      setStagedHerbs(prev => [...prev, { id: created.id, name: created.name }]);
+      setNewHerbIds(prev => [...prev, created.id]);
+      setAddSearch('');
+    } catch (error) {
+      toast.error((error as { code?: string })?.code === '23505' ? `${name} already exists` : `Failed to create ${name}`);
+    }
+  };
+
   const handleAddAllStaged = async () => {
     if (stagedHerbs.length === 0) return;
     const status: InventoryStatus = location === 'clinic' ? selectedStatus : 'full';
@@ -168,6 +189,11 @@ export function InventorySection({ location, title, icon, description, searchQue
     setAddSize('');
     setAvailability([]);
     setIsAddDialogOpen(false);
+    // Brand-new herb? Jump straight to its detail screen to fill in the rest.
+    if (newHerbIds.length > 0) {
+      openHerb(newHerbIds[0]);
+      setNewHerbIds([]);
+    }
   };
 
   const handleDialogClose = (open: boolean) => {
@@ -178,6 +204,7 @@ export function InventorySection({ location, title, icon, description, searchQue
       setAddSearch('');
       setAddSize('');
       setStagedHerbs([]);
+      setNewHerbIds([]);
       setAvailability([]);
     }
   };
@@ -483,6 +510,18 @@ export function InventorySection({ location, title, icon, description, searchQue
                       ) : (
                         <p className="px-3 py-2 text-sm text-muted-foreground italic">No matching herbs</p>
                       )}
+                      {!hasExactAddMatch && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors text-primary border-t"
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={handleCreateNewHerb}
+                          disabled={addHerbMutation.isPending}
+                        >
+                          <Plus className="inline h-3 w-3 mr-1" />
+                          Add &ldquo;{trimmedAddSearch}&rdquo; as new herb
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -702,7 +741,9 @@ function InventoryItemRow({
             />
           ) : (
             <>
-              <p className="font-medium truncate">{item.herbs ? getDisplayName(item.herbs) : ''}</p>
+              <p className="font-medium truncate">
+                <HerbNameButton herb={item.herbs}>{item.herbs ? getDisplayName(item.herbs) : ''}</HerbNameButton>
+              </p>
               {item.herbs && (() => {
                 const display = getDisplayName(item.herbs);
                 const alts = [item.herbs.name, item.herbs.common_name, item.herbs.latin_name, item.herbs.pinyin_name]

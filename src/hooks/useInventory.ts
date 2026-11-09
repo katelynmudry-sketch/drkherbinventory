@@ -15,6 +15,9 @@ export interface Herb {
   preferred_name: 'common' | 'latin' | 'pinyin' | null;
   low_threshold_lb: number;
   notes: string | null;
+  tincture_alcohol: string | null;
+  tincture_ratio: string | null;
+  plant_part: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -132,7 +135,7 @@ export function useUpdateHerb() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, name, common_name, latin_name, pinyin_name, preferred_name, low_threshold_lb, notes }: { id: string; name?: string; common_name?: string | null; latin_name?: string | null; pinyin_name?: string | null; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string | null }) => {
+    mutationFn: async ({ id, name, common_name, latin_name, pinyin_name, preferred_name, low_threshold_lb, notes, tincture_alcohol, tincture_ratio, plant_part }: { id: string; name?: string; common_name?: string | null; latin_name?: string | null; pinyin_name?: string | null; preferred_name?: 'common' | 'latin' | 'pinyin' | null; low_threshold_lb?: number; notes?: string | null; tincture_alcohol?: string | null; tincture_ratio?: string | null; plant_part?: string | null }) => {
       // Build payload with only defined fields; coerce types to match DB expectations
       const payload: Record<string, unknown> = {};
       if (name !== undefined) payload.name = name;
@@ -142,6 +145,9 @@ export function useUpdateHerb() {
       if (preferred_name !== undefined) payload.preferred_name = preferred_name || null;
       // low_threshold_lb excluded — PostgREST schema cache doesn't reflect this column yet
       if (notes !== undefined) payload.notes = notes || null;
+      if (tincture_alcohol !== undefined) payload.tincture_alcohol = tincture_alcohol || null;
+      if (tincture_ratio !== undefined) payload.tincture_ratio = tincture_ratio || null;
+      if (plant_part !== undefined) payload.plant_part = plant_part || null;
 
       // Do the update without select — avoids RLS RETURNING issues
       const { error: updateError } = await supabase
