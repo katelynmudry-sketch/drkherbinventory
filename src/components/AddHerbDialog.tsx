@@ -18,7 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAddHerb, useAddInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useAddHerb, useAddInventory, useUpdateInventory, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { supabase } from '@/integrations/supabase/client';
 import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
 import { useHerbDetail } from '@/components/HerbDetail';
 import { toast } from 'sonner';
@@ -70,6 +71,8 @@ export function AddHerbDialog() {
   const { data: existingHerbs = [] } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
+  const updateInventory = useUpdateInventory();
+  const { data: existingInventory = [] } = useInventory(location);
   const { openHerb } = useHerbDetail();
 
   const isLbLocation = LB_LOCATIONS.has(location);
@@ -115,6 +118,7 @@ export function AddHerbDialog() {
     setIsProcessing(true);
 
     let successCount = 0;
+    let updatedCount = 0;
     let firstNewHerbId: string | null = null;
     for (const entry of staged) {
       try {
@@ -124,24 +128,63 @@ export function AddHerbDialog() {
           if (!firstNewHerbId) firstNewHerbId = herb.id;
         }
 
+        // Build the row we'd insert; if the herb is already in this location
+        // we update the existing row to these values instead.
+        let desired: { status: InventoryStatus; quantity?: number; notes?: string };
         if (isLbLocation) {
           const herbThreshold = herb.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
-          await addInventory.mutateAsync({
-            herb_id: herb.id,
-            location,
-            status: calcBulkStatus(quantity, herbThreshold),
-            quantity,
-          });
+          desired = { status: calcBulkStatus(quantity, herbThreshold), quantity };
         } else {
           const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
           const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
+          desired = { status: inventoryStatus, ...(notes ? { notes } : {}) };
+        }
 
-          await addInventory.mutateAsync({
-            herb_id: herb.id,
-            location,
-            status: inventoryStatus,
-            ...(notes ? { notes } : {}),
-          });
+        const existingRow = existingInventory.find(i => i.herb_id === herb!.id);
+
+        if (existingRow) {
+          if (location === 'tincture') {
+            // Re-adding a tincture starts a fresh one: restart the 14-day timer
+            await updateInventory.mutateAsync({
+              id: existingRow.id,
+              ...desired,
+              tincture_started_at: new Date().toISOString(),
+              tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            });
+            updatedCount++;
+          } else if (existingRow.status === desired.status && (desired.quantity === undefined || existingRow.quantity === desired.quantity)) {
+            toast.info(`${entry.name} is already ${desired.status} in ${LOCATION_LABELS[location]}`);
+          } else {
+            await updateInventory.mutateAsync({ id: existingRow.id, ...desired });
+            updatedCount++;
+          }
+          continue;
+        }
+
+        try {
+          await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired });
+        } catch (insertError: any) {
+          // Row exists but wasn't in the cached list — look it up and update it
+          if (insertError?.code === '23505') {
+            const { data: row, error: lookupError } = await supabase
+              .from('inventory')
+              .select('id')
+              .eq('herb_id', herb.id)
+              .eq('location', location)
+              .maybeSingle();
+            if (lookupError || !row) throw insertError;
+            await updateInventory.mutateAsync({
+              id: row.id,
+              ...desired,
+              ...(location === 'tincture' ? {
+                tincture_started_at: new Date().toISOString(),
+                tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+              } : {}),
+            });
+            updatedCount++;
+            continue;
+          }
+          throw insertError;
         }
 
         successCount++;
@@ -157,6 +200,9 @@ export function AddHerbDialog() {
 
     if (successCount > 0) {
       toast.success(`Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`);
+    }
+    if (updatedCount > 0) {
+      toast.success(`Updated ${updatedCount} herb${updatedCount > 1 ? 's' : ''} already in ${LOCATION_LABELS[location]}`);
     }
 
     setStaged([]);
