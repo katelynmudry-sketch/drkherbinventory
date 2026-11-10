@@ -18,7 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAddHerb, useAddInventory, useUpdateInventory, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useAddHerb, useAddInventory, useUpdateInventory, useDeleteInventory, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { usePressBatch } from '@/hooks/useTinctureBatches';
 import { supabase } from '@/integrations/supabase/client';
 import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
 import { useHerbDetail } from '@/components/HerbDetail';
@@ -67,15 +68,20 @@ export function AddHerbDialog() {
   const [quantity, setQuantity] = useState(1);
   const [staged, setStaged] = useState<StagedHerb[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [mode, setMode] = useState<'add' | 'remove'>('add');
 
   const { data: existingHerbs = [] } = useHerbs();
   const addHerb = useAddHerb();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
+  const deleteInventory = useDeleteInventory();
+  const pressBatch = usePressBatch();
   const { data: existingInventory = [] } = useInventory(location);
   const { openHerb } = useHerbDetail();
 
   const isLbLocation = LB_LOCATIONS.has(location);
+  const isRemove = mode === 'remove';
+  const removeVerb = location === 'tincture' ? 'Press' : 'Remove';
 
   const handleLocationChange = (v: InventoryLocation) => {
     setLocation(v);
@@ -85,18 +91,21 @@ export function AddHerbDialog() {
 
   const filteredHerbs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return existingHerbs;
-    return existingHerbs.filter(h =>
+    // In remove mode only herbs actually in this location can be picked
+    const inLocation = new Set(existingInventory.map(i => i.herb_id));
+    const pool = isRemove ? existingHerbs.filter(h => inLocation.has(h.id)) : existingHerbs;
+    if (!q) return pool;
+    return pool.filter(h =>
       h.name.toLowerCase().includes(q) ||
       (h.common_name && h.common_name.toLowerCase().includes(q)) ||
       (h.latin_name && h.latin_name.toLowerCase().includes(q))
     );
-  }, [search, existingHerbs]);
+  }, [search, existingHerbs, existingInventory, isRemove]);
 
   const exactMatch = existingHerbs.find(
     h => h.name.toLowerCase() === search.trim().toLowerCase()
   );
-  const isNewHerb = search.trim().length > 0 && !exactMatch;
+  const isNewHerb = !isRemove && search.trim().length > 0 && !exactMatch;
 
   const stageHerb = (name: string, isNew: boolean) => {
     if (!name.trim()) return;
@@ -113,8 +122,49 @@ export function AddHerbDialog() {
     setStaged(prev => prev.filter(s => s.name !== name));
   };
 
+  const handleRemoveConfirm = async () => {
+    setIsProcessing(true);
+    let doneCount = 0;
+    for (const entry of staged) {
+      try {
+        const herb = existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
+        const row = herb && existingInventory.find(i => i.herb_id === herb.id);
+        if (!row) {
+          toast.error(`${entry.name} isn't in ${LOCATION_LABELS[location]}`);
+          continue;
+        }
+        if (location === 'tincture') {
+          // Pressed: batch becomes active, tincture jar row is removed
+          const { data: batch } = await supabase
+            .from('tincture_batches')
+            .select('id')
+            .eq('herb_id', row.herb_id)
+            .eq('status', 'macerating')
+            .maybeSingle();
+          const batchId = batch?.id ?? row.current_batch_id ?? null;
+          if (batchId) await pressBatch.mutateAsync(batchId);
+        }
+        await deleteInventory.mutateAsync(row.id);
+        doneCount++;
+      } catch (error: any) {
+        toast.error(`Failed to ${removeVerb.toLowerCase()} ${entry.name}`);
+        console.error(error);
+      }
+    }
+    if (doneCount > 0) {
+      toast.success(location === 'tincture'
+        ? `Pressed ${doneCount} herb${doneCount > 1 ? 's' : ''}`
+        : `Removed ${doneCount} herb${doneCount > 1 ? 's' : ''} from ${LOCATION_LABELS[location]}`);
+    }
+    setStaged([]);
+    setSearch('');
+    setIsProcessing(false);
+    setIsOpen(false);
+  };
+
   const handleConfirm = async () => {
     if (staged.length === 0) return;
+    if (isRemove) return handleRemoveConfirm();
     setIsProcessing(true);
 
     let successCount = 0;
@@ -222,6 +272,7 @@ export function AddHerbDialog() {
       setStaged([]);
       setStatus(DEFAULT_STATUS[location]);
       setQuantity(1);
+      setMode('add');
     }
   };
 
@@ -239,11 +290,31 @@ export function AddHerbDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Leaf className="h-5 w-5 text-primary" />
-            Add Herb to Inventory
+            {isRemove ? (location === 'tincture' ? 'Press Herbs' : 'Remove Herbs from Inventory') : 'Add Herb to Inventory'}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
+          {/* Add / Remove */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={isRemove ? 'outline' : 'default'}
+              onClick={() => { setMode('add'); setStaged([]); setSearch(''); }}
+              disabled={isProcessing}
+            >
+              Add
+            </Button>
+            <Button
+              type="button"
+              variant={isRemove ? 'default' : 'outline'}
+              onClick={() => { setMode('remove'); setStaged([]); setSearch(''); }}
+              disabled={isProcessing}
+            >
+              {location === 'tincture' ? 'Pressed' : 'Remove'}
+            </Button>
+          </div>
+
           {/* Location */}
           <div className="space-y-2">
             <Label>Location</Label>
@@ -263,7 +334,7 @@ export function AddHerbDialog() {
           </div>
 
           {/* Status / Quantity */}
-          {isLbLocation ? (
+          {isRemove ? null : isLbLocation ? (
             <div className="space-y-2">
               <Label>Quantity (lbs)</Label>
               <Select value={String(quantity)} onValueChange={(v) => setQuantity(Number(v))}>
@@ -346,7 +417,7 @@ export function AddHerbDialog() {
             )}
 
             {search.trim().length === 0 && staged.length === 0 && (
-              <p className="text-xs text-muted-foreground">Start typing to search your herb list</p>
+              <p className="text-xs text-muted-foreground">{isRemove ? `Start typing to search herbs in ${LOCATION_LABELS[location]}` : 'Start typing to search your herb list'}</p>
             )}
           </div>
 
@@ -381,9 +452,11 @@ export function AddHerbDialog() {
           >
             <Check className="h-4 w-4" />
             {isProcessing
-              ? 'Adding...'
+              ? (isRemove ? 'Working...' : 'Adding...')
               : staged.length === 0
               ? 'Select herbs above'
+              : isRemove
+              ? `${removeVerb} ${staged.length} herb${staged.length > 1 ? 's' : ''}${location === 'tincture' ? '' : ` from ${LOCATION_LABELS[location]}`}`
               : `Add ${staged.length} herb${staged.length > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`}
           </Button>
         </div>
