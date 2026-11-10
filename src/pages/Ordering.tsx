@@ -29,6 +29,7 @@ import {
 } from '@/hooks/usePricing';
 import { HERB_LIST } from '@/lib/herbCorrection';
 import { SupplierCompare } from '@/components/SupplierCompare';
+import { BulkHerbEditDialog } from '@/components/BulkHerbEditDialog';
 import { USD_TO_CAD_RATE, isUsdSupplier, usdToCad } from '@/lib/currency';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -354,6 +355,8 @@ const Ordering = () => {
 
     for (const item of inventory) {
       if (manualRemoveIds.has(item.id)) continue;
+      // Herbs flagged HARVEST are out on purpose — never auto-pull them into an order
+      if (item.herbs?.harvest) continue;
 
       const bulkQty = Number(item.quantity);
       const backstockQty = backstockQtyByHerbId.get(item.herb_id) ?? 0;
@@ -382,6 +385,15 @@ const Ordering = () => {
 
     return Array.from(included.values());
   }, [inventory, activeFilters, manualAdds, manualRemoveIds, backstockQtyByHerbId, clinicQtyByHerbId]);
+
+  // Herbs flagged to harvest (kept out of the automatic order list)
+  const harvestHerbs = useMemo(() => inventory.filter(i => i.herbs?.harvest), [inventory]);
+  // Every herb tracked in bulk, for the bulk-edit dialog
+  const bulkHerbs = useMemo(() => {
+    const map = new Map<string, NonNullable<(typeof inventory)[0]['herbs']>>();
+    for (const i of inventory) if (i.herbs) map.set(i.herbs.id, i.herbs);
+    return Array.from(map.values());
+  }, [inventory]);
 
   // Herbs available to add manually (bulk inventory herbs not already in the order list)
   const orderItemIds = useMemo(() => new Set(orderItems.map(i => i.id)), [orderItems]);
@@ -560,6 +572,7 @@ const Ordering = () => {
                 </SelectContent>
               </Select>
               <span className="text-xs text-muted-foreground">(session only — no inventory change)</span>
+              <div className="ml-auto"><BulkHerbEditDialog herbs={bulkHerbs} /></div>
             </div>
 
             {orderItems.length === 0 ? (
@@ -767,6 +780,28 @@ const Ordering = () => {
           pricing={pricing}
           suppliers={suppliers}
         />
+
+        {/* Section 1.3: Herbs to harvest */}
+        {harvestHerbs.length > 0 && (
+          <Card className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-emerald-800 dark:text-emerald-400">
+                Harvest ({harvestHerbs.length})
+                <span className="text-xs font-normal text-muted-foreground">not included in the order list above</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {harvestHerbs.map(item => (
+                  <span key={item.id} className="rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    {item.herbs?.name ?? '—'}
+                    <span className="ml-1.5 text-xs font-normal opacity-70">{Number(item.quantity)} lb</span>
+                  </span>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Section 1.5: Ordered herbs (undo panel) */}
         {orderedHerbs.length > 0 && (

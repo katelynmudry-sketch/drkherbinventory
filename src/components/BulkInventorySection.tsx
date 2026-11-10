@@ -1071,7 +1071,12 @@ function BulkItemCard({
                   .filter((n): n is string => !!n && n !== display);
                 return (
                   <>
-                    <p className="text-sm font-medium truncate leading-tight"><HerbNameButton herb={item.herbs}>{display}</HerbNameButton></p>
+                    <p className="text-sm font-medium truncate leading-tight">
+                      <HerbNameButton herb={item.herbs}>{display}</HerbNameButton>
+                      {item.herbs.harvest && (
+                        <span className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase text-emerald-800">Harvest</span>
+                      )}
+                    </p>
                     {alts.length > 0 && (
                       <p className="text-xs text-muted-foreground truncate leading-tight">{alts.join(' · ')}</p>
                     )}

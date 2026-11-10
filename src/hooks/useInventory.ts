@@ -14,6 +14,7 @@ export interface Herb {
   pinyin_name: string | null;
   preferred_name: 'common' | 'latin' | 'pinyin' | null;
   low_threshold_lb: number;
+  harvest: boolean;
   notes: string | null;
   tincture_alcohol: string | null;
   tincture_ratio: string | null;
@@ -425,6 +426,26 @@ export function useUpdateInventoryByHerbName() {
 }
 
 // Update a herb's low_threshold_lb (reorder trigger) by herb_id
+/** Update many herbs at once: reorder trigger and/or the harvest flag */
+export function useBulkUpdateHerbs() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ ids, low_threshold_lb, harvest }: { ids: string[]; low_threshold_lb?: number; harvest?: boolean }) => {
+      if (ids.length === 0) return;
+      const payload: { low_threshold_lb?: number; harvest?: boolean } = {};
+      if (low_threshold_lb !== undefined) payload.low_threshold_lb = low_threshold_lb;
+      if (harvest !== undefined) payload.harvest = harvest;
+      const { error } = await supabase.from('herbs').update(payload).in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['herbs'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
 export function useUpdateLowThreshold() {
   const queryClient = useQueryClient();
 
