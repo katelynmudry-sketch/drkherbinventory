@@ -28,6 +28,7 @@ import {
   type OrderSuggestion,
 } from '@/hooks/usePricing';
 import { HERB_LIST } from '@/lib/herbCorrection';
+import { SupplierCompare } from '@/components/SupplierCompare';
 import { USD_TO_CAD_RATE, isUsdSupplier, usdToCad } from '@/lib/currency';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -756,6 +757,16 @@ const Ordering = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Section 1.2: Supplier comparison (single-supplier totals, mix and match) */}
+        <SupplierCompare
+          needs={orderItems
+            .map(i => i.herbs?.name ?? '')
+            .filter(Boolean)
+            .map(herbName => ({ herbName, qtyLb: reorderMap.get(herbName) ?? 1 }))}
+          pricing={pricing}
+          suppliers={suppliers}
+        />
 
         {/* Section 1.5: Ordered herbs (undo panel) */}
         {orderedHerbs.length > 0 && (

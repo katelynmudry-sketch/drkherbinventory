@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { isUsdSupplier, usdToCad } from '@/lib/currency';
+import { packagesNeeded, formatPackageInfo } from '@/lib/orderCompare';
 import { estimateShipping } from '@/lib/shipping';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -423,20 +424,6 @@ export function useUpsertReorderQty() {
 }
 
 // ─── Order Optimization ───────────────────────────────────────────────────────
-
-const GRAMS_PER_LB = 453.592;
-
-/** How many packages of `packageSizeG` grams to cover `qtyLb` pounds */
-function packagesNeeded(qtyLb: number, packageSizeG: number): number {
-  const qtyG = qtyLb * GRAMS_PER_LB;
-  return Math.ceil(qtyG / packageSizeG);
-}
-
-/** Format package info string for display, e.g. "2× 500g" */
-function formatPackageInfo(qtyLb: number, packageSizeG: number): string {
-  const n = packagesNeeded(qtyLb, packageSizeG);
-  return `${n}× ${packageSizeG}g`;
-}
 
 interface HerbOption {
   supplierId: string;
