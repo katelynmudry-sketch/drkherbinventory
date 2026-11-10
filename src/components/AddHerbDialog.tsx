@@ -18,7 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAddHerb, useAddInventory, useUpdateInventory, useDeleteInventory, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useAddHerb, useAddInventory, useUpdateInventory, useDeleteInventory, getDisplayName, Herb, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import { useActivityLog } from '@/contexts/ActivityLogContext';
 import { usePressBatch } from '@/hooks/useTinctureBatches';
 import { supabase } from '@/integrations/supabase/client';
 import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
@@ -76,6 +77,7 @@ export function AddHerbDialog() {
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
   const pressBatch = usePressBatch();
+  const { logActivity } = useActivityLog();
   const { data: existingInventory = [] } = useInventory(location);
   const { openHerb } = useHerbDetail();
 
@@ -122,6 +124,19 @@ export function AddHerbDialog() {
     setStaged(prev => prev.filter(s => s.name !== name));
   };
 
+  // Only status changes are undoable from the log; skip no-op status changes
+  const logStatusChange = (inventoryId: string, herb: Herb, prevStatus: InventoryStatus, newStatus: InventoryStatus) => {
+    if (prevStatus === newStatus) return;
+    logActivity({
+      type: 'status_change',
+      inventoryId,
+      herbName: getDisplayName(herb),
+      location,
+      prevStatus,
+      newStatus,
+    });
+  };
+
   const handleRemoveConfirm = async () => {
     setIsProcessing(true);
     let doneCount = 0;
@@ -145,6 +160,18 @@ export function AddHerbDialog() {
           if (batchId) await pressBatch.mutateAsync(batchId);
         }
         await deleteInventory.mutateAsync(row.id);
+        // Log with a full snapshot so Undo can restore the row
+        logActivity({
+          type: 'remove',
+          herb_id: row.herb_id,
+          herbName: herb ? getDisplayName(herb) : entry.name,
+          location,
+          status: row.status,
+          notes: row.notes,
+          tincture_started_at: row.tincture_started_at,
+          tincture_ready_at: row.tincture_ready_at,
+          current_batch_id: row.current_batch_id,
+        });
         doneCount++;
       } catch (error: any) {
         toast.error(`Failed to ${removeVerb.toLowerCase()} ${entry.name}`);
@@ -201,24 +228,34 @@ export function AddHerbDialog() {
               tincture_started_at: new Date().toISOString(),
               tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
             });
+            logStatusChange(existingRow.id, herb, existingRow.status, desired.status);
             updatedCount++;
           } else if (existingRow.status === desired.status && (desired.quantity === undefined || existingRow.quantity === desired.quantity)) {
             toast.info(`${entry.name} is already ${desired.status} in ${LOCATION_LABELS[location]}`);
           } else {
             await updateInventory.mutateAsync({ id: existingRow.id, ...desired });
+            logStatusChange(existingRow.id, herb, existingRow.status, desired.status);
             updatedCount++;
           }
           continue;
         }
 
         try {
-          await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired });
+          const created = await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired });
+          logActivity({
+            type: 'add',
+            inventoryId: created.id,
+            herb_id: herb.id,
+            herbName: getDisplayName(herb),
+            location,
+            status: desired.status,
+          });
         } catch (insertError: any) {
           // Row exists but wasn't in the cached list — look it up and update it
           if (insertError?.code === '23505') {
             const { data: row, error: lookupError } = await supabase
               .from('inventory')
-              .select('id')
+              .select('id, status')
               .eq('herb_id', herb.id)
               .eq('location', location)
               .maybeSingle();
@@ -231,6 +268,7 @@ export function AddHerbDialog() {
                 tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
               } : {}),
             });
+            logStatusChange(row.id, herb, row.status as InventoryStatus, desired.status);
             updatedCount++;
             continue;
           }
