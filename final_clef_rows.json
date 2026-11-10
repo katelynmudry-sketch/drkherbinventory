@@ -1,0 +1,714 @@
+[
+ {
+  "herb_name": "Chamomile",
+  "price_per_lb": 32.3865,
+  "size_g": 250,
+  "package_price": 17.85,
+  "code": "CLC80417",
+  "item_name": "Camomille (fleur)"
+ },
+ {
+  "herb_name": "Bay Leaf",
+  "price_per_lb": 54.3403,
+  "size_g": 250,
+  "package_price": 29.95,
+  "code": "CLC70360",
+  "item_name": "Laurier (feuille)"
+ },
+ {
+  "herb_name": "Spearmint",
+  "price_per_lb": 17.6901,
+  "size_g": 250,
+  "package_price": 9.75,
+  "code": "CLC80525",
+  "item_name": "Menthe douce (feuille)"
+ },
+ {
+  "herb_name": "Peppermint",
+  "price_per_lb": 17.6901,
+  "size_g": 250,
+  "package_price": 9.75,
+  "code": "CLC80450",
+  "item_name": "Menthe poivrée (feuille)"
+ },
+ {
+  "herb_name": "St John's Wort",
+  "price_per_lb": 33.5658,
+  "size_g": 250,
+  "package_price": 18.5,
+  "code": "CLC80526",
+  "item_name": "Millepertuis (fleur / feuille)"
+ },
+ {
+  "herb_name": "Mullein",
+  "price_per_lb": 30.3907,
+  "size_g": 250,
+  "package_price": 16.75,
+  "code": "CLC80451",
+  "item_name": "Molène (feuille)"
+ },
+ {
+  "herb_name": "Lemon Balm",
+  "price_per_lb": 61.2349,
+  "size_g": 250,
+  "package_price": 33.75,
+  "code": "CLC80361",
+  "item_name": "Mélisse (feuille)"
+ },
+ {
+  "herb_name": "Oregano",
+  "price_per_lb": 20.6838,
+  "size_g": 250,
+  "package_price": 11.4,
+  "code": "CLC70366",
+  "item_name": "Origan"
+ },
+ {
+  "herb_name": "Rumex",
+  "price_per_lb": 28.5763,
+  "size_g": 250,
+  "package_price": 15.75,
+  "code": "CLC70460",
+  "item_name": "Patience (racine morceaux)"
+ },
+ {
+  "herb_name": "Rose",
+  "price_per_lb": 40.3697,
+  "size_g": 250,
+  "package_price": 22.25,
+  "code": "CLC70214",
+  "item_name": "Pétales de roses"
+ },
+ {
+  "herb_name": "Reishi",
+  "price_per_lb": 50.3487,
+  "size_g": 250,
+  "package_price": 27.75,
+  "code": "CLC70487",
+  "item_name": "Reishi (champignon tranché)"
+ },
+ {
+  "herb_name": "Linden Flower",
+  "price_per_lb": 82.5537,
+  "size_g": 250,
+  "package_price": 45.5,
+  "code": "CLC70534",
+  "item_name": "Tilleul (fleur / bractée) B/O INDÉTERMINÉ"
+ },
+ {
+  "herb_name": "Echinacea Augustifolia",
+  "price_per_lb": 77.1106,
+  "size_g": 250,
+  "package_price": 42.5,
+  "code": "CLC70429",
+  "item_name": "Échinacéa angustifolia (racine)"
+ },
+ {
+  "herb_name": "Yarrow",
+  "price_per_lb": 18.0983,
+  "size_g": 500,
+  "package_price": 19.95,
+  "code": "CLC70401",
+  "item_name": "Achillée millefeuille (fleur)"
+ },
+ {
+  "herb_name": "Garlic Granules",
+  "price_per_lb": 20.4116,
+  "size_g": 500,
+  "package_price": 22.5,
+  "code": "CLC70404",
+  "item_name": "Ail (granulé)"
+ },
+ {
+  "herb_name": "Garlic Powder",
+  "price_per_lb": 17.9169,
+  "size_g": 500,
+  "package_price": 19.75,
+  "code": "CLC70400",
+  "item_name": "Ail (poudre)"
+ },
+ {
+  "herb_name": "Dill",
+  "price_per_lb": 31.1618,
+  "size_g": 500,
+  "package_price": 34.35,
+  "code": "CLC70350",
+  "item_name": "Aneth (feuille)"
+ },
+ {
+  "herb_name": "Anise",
+  "price_per_lb": 20.9106,
+  "size_g": 500,
+  "package_price": 23.05,
+  "code": "CLC70501",
+  "item_name": "Anis (graine)"
+ },
+ {
+  "herb_name": "Ashwagandha",
+  "price_per_lb": 19.2777,
+  "size_g": 500,
+  "package_price": 21.25,
+  "code": "CLC70496",
+  "item_name": "Ashwaganda (racine)"
+ },
+ {
+  "herb_name": "Astragalus",
+  "price_per_lb": 32.4318,
+  "size_g": 500,
+  "package_price": 35.75,
+  "code": "CLC70509",
+  "item_name": "Astragale (racine)"
+ },
+ {
+  "herb_name": "Linden",
+  "price_per_lb": 38.3285,
+  "size_g": 500,
+  "package_price": 42.25,
+  "code": "CLC70489",
+  "item_name": "Aubier Tilleul (écorce intérieure coupée) bio"
+ },
+ {
+  "herb_name": "Hawthorn Berries",
+  "price_per_lb": 23.1423,
+  "size_g": 500,
+  "package_price": 25.51,
+  "code": "CLC70407",
+  "item_name": "Aubépine bio (baies)"
+ },
+ {
+  "herb_name": "Hawthorn",
+  "price_per_lb": 20.6384,
+  "size_g": 500,
+  "package_price": 22.75,
+  "code": "CLC70408",
+  "item_name": "Aubépine bio (fleur / feuille)"
+ },
+ {
+  "herb_name": "Avena",
+  "price_per_lb": 32.8854,
+  "size_g": 500,
+  "package_price": 36.25,
+  "code": "CLC70409",
+  "item_name": "Avoine (tige verte en fleur)"
+ },
+ {
+  "herb_name": "Burdock",
+  "price_per_lb": 37.4213,
+  "size_g": 500,
+  "package_price": 41.25,
+  "code": "CLC70410",
+  "item_name": "Bardane (racine)"
+ },
+ {
+  "herb_name": "Basil",
+  "price_per_lb": 14.0614,
+  "size_g": 500,
+  "package_price": 15.5,
+  "code": "CLC70351",
+  "item_name": "Basilic (feuille)"
+ },
+ {
+  "herb_name": "Ocimum",
+  "price_per_lb": 65.2719,
+  "size_g": 500,
+  "package_price": 71.95,
+  "code": "CLC70544",
+  "item_name": "Basilic sacré (feuille)"
+ },
+ {
+  "herb_name": "Buckthorn Bark",
+  "price_per_lb": 25.6279,
+  "size_g": 500,
+  "package_price": 28.25,
+  "code": "CLC70413",
+  "item_name": "Bourdaine (écorce)"
+ },
+ {
+  "herb_name": "Uva Ursi",
+  "price_per_lb": 25.1744,
+  "size_g": 500,
+  "package_price": 27.75,
+  "code": "CLC70415",
+  "item_name": "Busserole (feuille)"
+ },
+ {
+  "herb_name": "Calendula",
+  "price_per_lb": 28.1227,
+  "size_g": 250,
+  "package_price": 15.5,
+  "code": "CLC80416",
+  "item_name": "Calendule (fleur)"
+ },
+ {
+  "herb_name": "Cinnamon Stick",
+  "price_per_lb": 41.1862,
+  "size_g": 500,
+  "package_price": 45.4,
+  "code": "CLC70379",
+  "item_name": "Cannelle (bâton)"
+ },
+ {
+  "herb_name": "Cinnamon",
+  "price_per_lb": 29.4835,
+  "size_g": 500,
+  "package_price": 32.5,
+  "code": "CLC70352",
+  "item_name": "Cannelle (poudre)"
+ },
+ {
+  "herb_name": "Caraway",
+  "price_per_lb": 15.6489,
+  "size_g": 500,
+  "package_price": 17.25,
+  "code": "CLC70539",
+  "item_name": "Carvi (graine)"
+ },
+ {
+  "herb_name": "Catnip",
+  "price_per_lb": 43.9984,
+  "size_g": 500,
+  "package_price": 48.5,
+  "code": "CLC70419",
+  "item_name": "Cataire (fleurs / feuilles)"
+ },
+ {
+  "herb_name": "Cayenne",
+  "price_per_lb": 26.0815,
+  "size_g": 500,
+  "package_price": 28.75,
+  "code": "CLC70420",
+  "item_name": "Cayenne (fruit en poudre)"
+ },
+ {
+  "herb_name": "Milk Thistle",
+  "price_per_lb": 22.9064,
+  "size_g": 500,
+  "package_price": 25.25,
+  "code": "CLC70423",
+  "item_name": "Chardon marie (graine)"
+ },
+ {
+  "herb_name": "Chili",
+  "price_per_lb": 27.4423,
+  "size_g": 500,
+  "package_price": 30.25,
+  "code": "CLC70353",
+  "item_name": "Chili fruits (morceaux)"
+ },
+ {
+  "herb_name": "Lemon Peel",
+  "price_per_lb": 56.699,
+  "size_g": 500,
+  "package_price": 62.5,
+  "code": "CLC70354",
+  "item_name": "Citron (écorce)"
+ },
+ {
+  "herb_name": "Clove",
+  "price_per_lb": 32.8854,
+  "size_g": 500,
+  "package_price": 36.25,
+  "code": "CLC70355",
+  "item_name": "Clou de girofle (entier)"
+ },
+ {
+  "herb_name": "Coriander",
+  "price_per_lb": 13.8346,
+  "size_g": 500,
+  "package_price": 15.25,
+  "code": "CLC70357",
+  "item_name": "Coriandre (graine)"
+ },
+ {
+  "herb_name": "Cumin Seed",
+  "price_per_lb": 17.0097,
+  "size_g": 500,
+  "package_price": 18.75,
+  "code": "CLC70536",
+  "item_name": "Cumin (graine entière)"
+ },
+ {
+  "herb_name": "Cumin Powder",
+  "price_per_lb": 14.2881,
+  "size_g": 500,
+  "package_price": 15.75,
+  "code": "CLC70540",
+  "item_name": "Cumin (poudre)"
+ },
+ {
+  "herb_name": "Turmeric",
+  "price_per_lb": 10.2058,
+  "size_g": 500,
+  "package_price": 11.25,
+  "code": "CLC70375",
+  "item_name": "Curcuma (poudre)"
+ },
+ {
+  "herb_name": "Eyebright",
+  "price_per_lb": 29.801,
+  "size_g": 500,
+  "package_price": 32.85,
+  "code": "CLC70522",
+  "item_name": "Euphraise (herbe)"
+ },
+ {
+  "herb_name": "Fennel",
+  "price_per_lb": 10.2058,
+  "size_g": 500,
+  "package_price": 11.25,
+  "code": "CLC70436",
+  "item_name": "Fenouil (graine entière) B/O INDÉTERMINÉ"
+ },
+ {
+  "herb_name": "Fenugreek",
+  "price_per_lb": 12.247,
+  "size_g": 500,
+  "package_price": 13.5,
+  "code": "CLC70506",
+  "item_name": "Fenugrec (graines)"
+ },
+ {
+  "herb_name": "Raspberry Leaf",
+  "price_per_lb": 33.339,
+  "size_g": 500,
+  "package_price": 36.75,
+  "code": "CLC70437",
+  "item_name": "Framboisier (feuille)"
+ },
+ {
+  "herb_name": "Juniper",
+  "price_per_lb": 20.6384,
+  "size_g": 500,
+  "package_price": 22.75,
+  "code": "CLC70439",
+  "item_name": "Genevrier (baie)"
+ },
+ {
+  "herb_name": "Gentian",
+  "price_per_lb": 43.6356,
+  "size_g": 500,
+  "package_price": 48.1,
+  "code": "CLC70440",
+  "item_name": "Gentiane (racine)"
+ },
+ {
+  "herb_name": "Ginger",
+  "price_per_lb": 19.5045,
+  "size_g": 500,
+  "package_price": 21.5,
+  "code": "CLC70441",
+  "item_name": "Gingembre (poudre)"
+ },
+ {
+  "herb_name": "Marshmallow",
+  "price_per_lb": 24.7208,
+  "size_g": 500,
+  "package_price": 27.25,
+  "code": "CLC70445",
+  "item_name": "Guimauve (racine)"
+ },
+ {
+  "herb_name": "Hibiscus",
+  "price_per_lb": 14.7417,
+  "size_g": 500,
+  "package_price": 16.25,
+  "code": "CLC70359",
+  "item_name": "Hibiscus (fleur)"
+ },
+ {
+  "herb_name": "Lavender",
+  "price_per_lb": 58.3319,
+  "size_g": 500,
+  "package_price": 64.3,
+  "code": "CLC70513",
+  "item_name": "Lavande (fleur)"
+ },
+ {
+  "herb_name": "Marjoram",
+  "price_per_lb": 25.1744,
+  "size_g": 500,
+  "package_price": 27.75,
+  "code": "CLC70373",
+  "item_name": "Marjolaine (feuille)"
+ },
+ {
+  "herb_name": "Chickweed",
+  "price_per_lb": 24.7208,
+  "size_g": 500,
+  "package_price": 27.25,
+  "code": "CLC70452",
+  "item_name": "Mouron des oiseaux (herbe)"
+ },
+ {
+  "herb_name": "Nutmeg",
+  "price_per_lb": 50.8023,
+  "size_g": 500,
+  "package_price": 56.0,
+  "code": "CLC70558",
+  "item_name": "Muscade (moulue)"
+ },
+ {
+  "herb_name": "Black Walnut",
+  "price_per_lb": 19.2777,
+  "size_g": 500,
+  "package_price": 21.25,
+  "code": "CLC70455",
+  "item_name": "Noyer noir (feuilles)"
+ },
+ {
+  "herb_name": "Onion Flakes",
+  "price_per_lb": 20.4116,
+  "size_g": 500,
+  "package_price": 22.5,
+  "code": "CLC70365",
+  "item_name": "Oignons (flocons)"
+ },
+ {
+  "herb_name": "Slippery Elm",
+  "price_per_lb": 65.9976,
+  "size_g": 500,
+  "package_price": 72.75,
+  "code": "CLC70456",
+  "item_name": "Orme rouge (écorce en poudre)"
+ },
+ {
+  "herb_name": "Nettle Leaf",
+  "price_per_lb": 27.1702,
+  "size_g": 500,
+  "package_price": 29.95,
+  "code": "CLC70457",
+  "item_name": "Ortie (feuille)"
+ },
+ {
+  "herb_name": "Paprika",
+  "price_per_lb": 19.2777,
+  "size_g": 500,
+  "package_price": 21.25,
+  "code": "CLC70367",
+  "item_name": "Paprika (poudre)"
+ },
+ {
+  "herb_name": "Passion Flower",
+  "price_per_lb": 49.4415,
+  "size_g": 500,
+  "package_price": 54.5,
+  "code": "CLC70459",
+  "item_name": "Passiflore (herbe)"
+ },
+ {
+  "herb_name": "Poppy",
+  "price_per_lb": 22.9064,
+  "size_g": 500,
+  "package_price": 25.25,
+  "code": "CLC70377",
+  "item_name": "Pavot (graine)"
+ },
+ {
+  "herb_name": "Parsley",
+  "price_per_lb": 38.5553,
+  "size_g": 500,
+  "package_price": 42.5,
+  "code": "CLC70368",
+  "item_name": "Persil (feuille)"
+ },
+ {
+  "herb_name": "Dandelion Root",
+  "price_per_lb": 26.7619,
+  "size_g": 500,
+  "package_price": 29.5,
+  "code": "CLC70463",
+  "item_name": "Pissenlit (racine)"
+ },
+ {
+  "herb_name": "Black Pepper",
+  "price_per_lb": 26.5351,
+  "size_g": 500,
+  "package_price": 29.25,
+  "code": "CLC70369",
+  "item_name": "Poivre noir (entier)"
+ },
+ {
+  "herb_name": "Black Pepper Ground",
+  "price_per_lb": 26.5351,
+  "size_g": 500,
+  "package_price": 29.25,
+  "code": "CLC70485",
+  "item_name": "Poivre noir (moulu)"
+ },
+ {
+  "herb_name": "Horsetail",
+  "price_per_lb": 20.6384,
+  "size_g": 500,
+  "package_price": 22.75,
+  "code": "CLC70530",
+  "item_name": "Prêle (tige stérile)"
+ },
+ {
+  "herb_name": "Psyllium",
+  "price_per_lb": 19.7313,
+  "size_g": 500,
+  "package_price": 21.75,
+  "code": "CLC70465",
+  "item_name": "Psyllium (écorce) (poudre)"
+ },
+ {
+  "herb_name": "Meadowsweet",
+  "price_per_lb": 24.7208,
+  "size_g": 500,
+  "package_price": 27.25,
+  "code": "CLC70531",
+  "item_name": "Reine des prés (herbe)"
+ },
+ {
+  "herb_name": "Rosemary",
+  "price_per_lb": 20.8199,
+  "size_g": 500,
+  "package_price": 22.95,
+  "code": "CLC70370",
+  "item_name": "Romarin (feuille)"
+ },
+ {
+  "herb_name": "Licorice",
+  "price_per_lb": 14.2881,
+  "size_g": 500,
+  "package_price": 15.75,
+  "code": "CLC70467",
+  "item_name": "Réglisse (racine en morceaux)"
+ },
+ {
+  "herb_name": "Savory",
+  "price_per_lb": 20.4116,
+  "size_g": 500,
+  "package_price": 22.5,
+  "code": "CLC70371",
+  "item_name": "Sarriette (feuille) B/O INDÉTERMINÉ"
+ },
+ {
+  "herb_name": "Sage",
+  "price_per_lb": 28.5763,
+  "size_g": 500,
+  "package_price": 31.5,
+  "code": "CLC70372",
+  "item_name": "Sauge entière (feuille)"
+ },
+ {
+  "herb_name": "White Willow Bark",
+  "price_per_lb": 13.5624,
+  "size_g": 500,
+  "package_price": 14.95,
+  "code": "CLC70533",
+  "item_name": "Saule blanc (écorce)"
+ },
+ {
+  "herb_name": "Schisandra",
+  "price_per_lb": 42.5469,
+  "size_g": 500,
+  "package_price": 46.9,
+  "code": "CLC70442",
+  "item_name": "Schisandra (baie entière)"
+ },
+ {
+  "herb_name": "Scutellaria",
+  "price_per_lb": 61.2349,
+  "size_g": 500,
+  "package_price": 67.5,
+  "code": "CLC70471",
+  "item_name": "Scutellaire (herbe)"
+ },
+ {
+  "herb_name": "Shatavari",
+  "price_per_lb": 22.226,
+  "size_g": 500,
+  "package_price": 24.5,
+  "code": "CLC70127",
+  "item_name": "Shatavari (racine poudre)"
+ },
+ {
+  "herb_name": "Elderberry",
+  "price_per_lb": 23.1332,
+  "size_g": 500,
+  "package_price": 25.5,
+  "code": "CLC70472",
+  "item_name": "Sureau (baie)"
+ },
+ {
+  "herb_name": "Elderflower",
+  "price_per_lb": 38.3285,
+  "size_g": 500,
+  "package_price": 42.25,
+  "code": "CLC70520",
+  "item_name": "Sureau (fleur)"
+ },
+ {
+  "herb_name": "Thyme",
+  "price_per_lb": 17.4633,
+  "size_g": 500,
+  "package_price": 19.25,
+  "code": "CLC70374",
+  "item_name": "Thym (feuille)"
+ },
+ {
+  "herb_name": "Red Clover",
+  "price_per_lb": 40.1429,
+  "size_g": 500,
+  "package_price": 44.25,
+  "code": "CLC70474",
+  "item_name": "Trèfle rouge (fleur / feuille coupées)"
+ },
+ {
+  "herb_name": "Valerian",
+  "price_per_lb": 31.2978,
+  "size_g": 500,
+  "package_price": 34.5,
+  "code": "CLC70475",
+  "item_name": "Valériane (racine) bio"
+ },
+ {
+  "herb_name": "Kelp",
+  "price_per_lb": 23.36,
+  "size_g": 500,
+  "package_price": 25.75,
+  "code": "CLC70570",
+  "item_name": "Varech algue (flocons)"
+ },
+ {
+  "herb_name": "Goldenrod",
+  "price_per_lb": 27.4423,
+  "size_g": 500,
+  "package_price": 30.25,
+  "code": "CLC70486",
+  "item_name": "Verge d'or (herbe)"
+ },
+ {
+  "herb_name": "Lemongrass",
+  "price_per_lb": 17.0097,
+  "size_g": 500,
+  "package_price": 18.75,
+  "code": "CLC70510",
+  "item_name": "Verveine des Indes (herbe)"
+ },
+ {
+  "herb_name": "Vitex",
+  "price_per_lb": 17.9169,
+  "size_g": 500,
+  "package_price": 19.75,
+  "code": "CLC70535",
+  "item_name": "Vitex bio (fruit)"
+ },
+ {
+  "herb_name": "Rosehip",
+  "price_per_lb": 29.2567,
+  "size_g": 500,
+  "package_price": 32.25,
+  "code": "CLC70430",
+  "item_name": "Églantier (baie entière)"
+ },
+ {
+  "herb_name": "Eleuthero",
+  "price_per_lb": 32.205,
+  "size_g": 500,
+  "package_price": 35.5,
+  "code": "CLC70432",
+  "item_name": "Éleuthéro (racine)"
+ }
+]

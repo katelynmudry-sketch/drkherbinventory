@@ -1,0 +1,1333 @@
+{
+ "pb": {
+  "Alfalfa": [
+   18.0,
+   "200036",
+   "ALFALFA LEAF CUT-OG"
+  ],
+  "Althea": [
+   33.0,
+   "202350",
+   "MARSHMALLOW ROOT CUT-OG"
+  ],
+  "Angelica": [
+   50.0,
+   "200084",
+   "ANGELICA ARCHANGELICA ROOT CUT-OG"
+  ],
+  "Anise": [
+   20.0,
+   "200096",
+   "ANISE SEED WHOLE-OG"
+  ],
+  "Artemisia": [
+   40.0,
+   "200132",
+   "ARTEMISIA ANNUA HERB CUT-OG ROC OU"
+  ],
+  "Artichoke": [
+   22.0,
+   "200156",
+   "ARTICHOKE LEAF POWDER-OG"
+  ],
+  "Ashwagandha": [
+   45.0,
+   "200220",
+   "ASHWAGANDHA ROOT CUT-OG"
+  ],
+  "Astragalus": [
+   25.0,
+   "200283",
+   "ASTRAGALUS ROOT CUT-OG"
+  ],
+  "Avena": [
+   25.0,
+   "202583",
+   "OATSTRAW CUT-OG"
+  ],
+  "Bacopa": [
+   70.0,
+   "200307",
+   "BACOPA HERB CUT-OG ROC"
+  ],
+  "Bayberry Root Bark": [
+   65.0,
+   "200381",
+   "BAYBERRY ROOT BARK CUT-WILD"
+  ],
+  "Black Cohosh": [
+   44.0,
+   "200454",
+   "BLACK COHOSH ROOT CUT-OG"
+  ],
+  "Black Haw": [
+   60.0,
+   "200466",
+   "BLACK HAW BARK CUT-WILD"
+  ],
+  "Black Pepper": [
+   26.0,
+   "200478",
+   "BLACK PEPPER GROUND-OG"
+  ],
+  "Black Walnut": [
+   25.0,
+   "200538",
+   "BLACK WALNUT HULLS CUT-WILD"
+  ],
+  "Blessed Thistle": [
+   40.0,
+   "200562",
+   "BLESSED THISTLE CUT-OG ROC OU"
+  ],
+  "Blue Cohosh": [
+   44.0,
+   "200600",
+   "BLUE COHOSH ROOT CUT-OG"
+  ],
+  "Blue Vervain": [
+   40.0,
+   "200626",
+   "BLUE VERVAIN HERB CUT-OG"
+  ],
+  "Borage": [
+   40.0,
+   "200650",
+   "BORAGE HERB CUT-OG"
+  ],
+  "Bugleweed": [
+   45.0,
+   "200662",
+   "BUGLEWEED CUT-OG"
+  ],
+  "Burdock": [
+   28.0,
+   "200699",
+   "BURDOCK ROOT CUT-OG"
+  ],
+  "Calendula": [
+   65.0,
+   "200783",
+   "CALENDULA FLOWER WHOLE-OG"
+  ],
+  "California Poppy": [
+   47.0,
+   "200735",
+   "CALIFORNIA POPPY HERB CUT-OG"
+  ],
+  "Catnip": [
+   30.0,
+   "200855",
+   "CATNIP LEAF TBC-OG"
+  ],
+  "Chamomile": [
+   40.0,
+   "200915",
+   "CHAMOMILE FLOWER WHOLE-OG"
+  ],
+  "Cinnamon": [
+   22.0,
+   "200999",
+   "CINNAMON CHIPS CUT-OG"
+  ],
+  "Cleavers": [
+   22.0,
+   "201023",
+   "CLEAVERS HERB CUT-OG"
+  ],
+  "Comfrey Root": [
+   30.0,
+   "201083",
+   "COMFREY ROOT POWDER-OG"
+  ],
+  "Cramp Bark": [
+   65.0,
+   "201131",
+   "CRAMPBARK WHOLE-WILD"
+  ],
+  "Damiana": [
+   32.0,
+   "201143",
+   "DAMIANA HERB CUT-OG"
+  ],
+  "Dandelion Leaf": [
+   30.0,
+   "201167",
+   "DANDELION LEAF CUT-OG"
+  ],
+  "Dandelion Root": [
+   32.0,
+   "201179",
+   "DANDELION ROOT POWDER-OG"
+  ],
+  "Dong Quai": [
+   50.0,
+   "201239",
+   "DONG QUAI ROOT CUT-OG"
+  ],
+  "Echinacea Augustifolia": [
+   58.0,
+   "201288",
+   "ECHINACEA ANGUSTIFOLIA ROOT WHOLE-OG"
+  ],
+  "Echinacea Purpurea Leaf": [
+   22.0,
+   "201300",
+   "ECHINACEA PURPUREA HERB POWDER-OG"
+  ],
+  "Echinacea Purpurea Root": [
+   38.0,
+   "201360",
+   "ECHINACEA PURPUREA ROOT CUT-OG"
+  ],
+  "Eclipta": [
+   35.0,
+   "201386",
+   "ECLIPTA HERB CUT-OG ROC OU"
+  ],
+  "Eleuthero": [
+   23.0,
+   "201483",
+   "ELEUTHERO ROOT CUT-OG"
+  ],
+  "Fennel": [
+   20.0,
+   "201495",
+   "FENNEL SEED WHOLE-OG"
+  ],
+  "Feverfew": [
+   32.0,
+   "201543",
+   "FEVERFEW HERB CUT-OG"
+  ],
+  "Gentian": [
+   40.0,
+   "201591",
+   "GENTIAN ROOT CUT-OG"
+  ],
+  "Ginger": [
+   22.0,
+   "201603",
+   "GINGER RHIZOME CUT-OG"
+  ],
+  "Ginkgo": [
+   24.0,
+   "201651",
+   "GINKGO LEAF WHOLE-OG"
+  ],
+  "Goji": [
+   29.0,
+   "201675",
+   "GOJI BERRIES-OG"
+  ],
+  "Goldenrod": [
+   22.0,
+   "201699",
+   "GOLDENROD HERB CUT-OG"
+  ],
+  "Gotu Kola": [
+   40.0,
+   "201803",
+   "GOTU KOLA HERB CUT-OG"
+  ],
+  "Gravel Root": [
+   45.0,
+   "201840",
+   "GRAVEL ROOT CUT-OG"
+  ],
+  "Hawthorn": [
+   20.0,
+   "201900",
+   "HAWTHORN BERRIES WHOLE-OG"
+  ],
+  "Hops": [
+   49.0,
+   "201949",
+   "HOPS STROBILES WHOLE-OG"
+  ],
+  "Horsetail": [
+   28.0,
+   "201998",
+   "HORSETAIL POWDER-OG"
+  ],
+  "Hypericum": [
+   31.0,
+   "203296",
+   "ST JOHNS WORT TOPS CUT-OG"
+  ],
+  "Hyssop": [
+   23.0,
+   "204514",
+   "HYSSOP HERB CUT-OG"
+  ],
+  "Inula": [
+   25.0,
+   "201458",
+   "ELECAMPANE ROOT CUT-OG"
+  ],
+  "Iris": [
+   42.0,
+   "200602",
+   "BLUE FLAG ROOT CUT-OG ROC OU"
+  ],
+  "Juniper": [
+   27.0,
+   "202058",
+   "JUNIPER BERRIES WHOLE-OG"
+  ],
+  "Lavender": [
+   44.0,
+   "202134",
+   "LAVENDER FLOWERS WHOLE-OG"
+  ],
+  "Lemon Balm": [
+   28.0,
+   "202158",
+   "LEMON BALM HERB CUT-OG"
+  ],
+  "Lemongrass": [
+   17.0,
+   "202207",
+   "LEMONGRASS CUT-OG"
+  ],
+  "Licorice": [
+   30.0,
+   "202231",
+   "LICORICE ROOT CUT-OG"
+  ],
+  "Linden": [
+   43.0,
+   "202243",
+   "LINDEN FLOWER & LEAF CUT-OG"
+  ],
+  "Lomatium": [
+   47.25,
+   "202278",
+   "LOMATIUM ROOT CUT-WILD"
+  ],
+  "Lycopus": [
+   45.0,
+   "200662",
+   "BUGLEWEED CUT-OG"
+  ],
+  "Maca": [
+   22.0,
+   "202302",
+   "MACA ROOT RAW POWDER-OG"
+  ],
+  "Marshmallow": [
+   25.0,
+   "202314",
+   "MARSHMALLOW LEAF CUT-OG"
+  ],
+  "Meadowsweet": [
+   24.0,
+   "202362",
+   "MEADOWSWEET HERB IN FLOWER CUT-OG"
+  ],
+  "Milk Thistle": [
+   25.0,
+   "202412",
+   "MILK THISTLE SEED WHOLE-OG"
+  ],
+  "Motherwort": [
+   29.0,
+   "202374",
+   "MOTHERWORT HERB CUT-OG ROC OU"
+  ],
+  "Mugwort": [
+   23.0,
+   "202424",
+   "MUGWORT HERB CUT-OG"
+  ],
+  "Mullein": [
+   40.0,
+   "202436",
+   "MULLEIN LEAF CUT-OG ROC OU"
+  ],
+  "Nettle Leaf": [
+   25.0,
+   "204596",
+   "NETTLE HERB CUT-OG"
+  ],
+  "Nettle Root": [
+   38.0,
+   "202509",
+   "NETTLE ROOT CUT-OG ROC OU"
+  ],
+  "Oak": [
+   21.0,
+   "203613",
+   "WHITE OAK BARK CUT-WILD"
+  ],
+  "Ocimum": [
+   20.0,
+   "204446",
+   "HOLY BASIL CUT-OG"
+  ],
+  "Olive Leaf": [
+   20.0,
+   "202595",
+   "OLIVE LEAF CUT-OG"
+  ],
+  "Orange Peel": [
+   29.0,
+   "202691",
+   "ORANGE PEEL POWDER-OG"
+  ],
+  "Oregano": [
+   24.0,
+   "202727",
+   "OREGANO LEAF CUT-OG"
+  ],
+  "Oregon Grape": [
+   40.0,
+   "202679",
+   "OREGON GRAPE ROOT CUT-WILD"
+  ],
+  "Parsley": [
+   33.0,
+   "202739",
+   "PARSLEY ROOT CUT-OG"
+  ],
+  "Passion Flower": [
+   29.0,
+   "202763",
+   "PASSIONFLOWER HERB IN FLOWER CUT-OG"
+  ],
+  "Peppermint": [
+   25.0,
+   "202799",
+   "PEPPERMINT LEAF CUT-OG"
+  ],
+  "Plantain": [
+   38.0,
+   "202811",
+   "PLANTAIN LEAF CUT-OG ROC OU"
+  ],
+  "Poppy": [
+   47.0,
+   "200735",
+   "CALIFORNIA POPPY HERB CUT-OG"
+  ],
+  "Raspberry Leaf": [
+   23.0,
+   "202907",
+   "RASPBERRY LEAF CUT-OG"
+  ],
+  "Red Clover": [
+   33.0,
+   "202920",
+   "RED CLOVER HERB CUT-OG"
+  ],
+  "Rheum": [
+   39.0,
+   "203454",
+   "TURKEY RHUBARB ROOT CUT-OG"
+  ],
+  "Rhodiola": [
+   60.0,
+   "202944",
+   "RHODIOLA ROOT CUT-OG"
+  ],
+  "Rose": [
+   57.0,
+   "203005",
+   "ROSE PETALS WHOLE-OG"
+  ],
+  "Rosemary": [
+   18.0,
+   "202992",
+   "ROSEMARY LEAF WHOLE-OG"
+  ],
+  "Rue": [
+   34.0,
+   "203029",
+   "RUE HERB CUT-OG"
+  ],
+  "Rumex": [
+   38.0,
+   "203781",
+   "YELLOW DOCK ROOT CUT-OG ROC OU"
+  ],
+  "Sage": [
+   35.0,
+   "203042",
+   "SAGE LEAF CUT-OG ROC OU"
+  ],
+  "Schisandra": [
+   57.0,
+   "203078",
+   "SCHISANDRA BERRIES WHOLE-OG"
+  ],
+  "Scutellaria": [
+   46.0,
+   "203188",
+   "SKULLCAP HERB CUT-OG"
+  ],
+  "Shatavari": [
+   25.0,
+   "203128",
+   "SHATAVARI ROOT CUT-OG"
+  ],
+  "Spilanthes": [
+   36.0,
+   "203260",
+   "SPILANTHES PLANT WITH ROOT CUT-OG ROC"
+  ],
+  "Thyme": [
+   26.0,
+   "203356",
+   "THYME LEAF CUT-OG"
+  ],
+  "Tulsi": [
+   31.0,
+   "203428",
+   "TULSI BASIL HERB CUT-OG"
+  ],
+  "Valerian": [
+   47.0,
+   "203526",
+   "VALERIAN ROOT CUT-OG"
+  ],
+  "White Oak": [
+   21.0,
+   "203613",
+   "WHITE OAK BARK CUT-WILD"
+  ],
+  "Wild Yam": [
+   47.0,
+   "203661",
+   "WILD YAM ROOT CUT-WILD"
+  ],
+  "Yarrow": [
+   33.0,
+   "203733",
+   "YARROW FLOWERS CUT-WILD"
+  ]
+ },
+ "mrh": {
+  "Agrimony": [
+   16.88,
+   "11-00004-17",
+   "Agrimony"
+  ],
+  "Alfalfa": [
+   15.75,
+   "11-00006-17",
+   "Alfalfa Leaf"
+  ],
+  "Althea": [
+   27.75,
+   "11-00353-17",
+   "Marshmallow Root"
+  ],
+  "Angelica": [
+   36.0,
+   "11-00645-17",
+   "Angelica Root"
+  ],
+  "Anise": [
+   12.94,
+   "11-00021-17",
+   "Anise Seed"
+  ],
+  "Artemisia": [
+   21.0,
+   "11-00568-17",
+   "Wormwood"
+  ],
+  "Artichoke": [
+   18.0,
+   "11-00028-17",
+   "Artichoke Leaf"
+  ],
+  "Ashwagandha": [
+   18.75,
+   "11-00029-17",
+   "Ashwagandha Root"
+  ],
+  "Astragalus": [
+   21.75,
+   "11-00032-17",
+   "Astragalus Root"
+  ],
+  "Avena": [
+   21.75,
+   "11-00389-17",
+   "Oatstraw"
+  ],
+  "Bayberry Root Bark": [
+   55.69,
+   "11-00041-17",
+   "Bayberry Root Bark"
+  ],
+  "Bee Balm": [
+   34.5,
+   "11-36407-17",
+   "Bee Balm"
+  ],
+  "Birch Bark": [
+   22.5,
+   "11-00048-17",
+   "Birch Bark"
+  ],
+  "Birch Leaf": [
+   16.31,
+   "11-00050-17",
+   "Birch Leaf"
+  ],
+  "Black Cohosh": [
+   40.13,
+   "11-00055-17",
+   "Black Cohosh Root"
+  ],
+  "Black Haw": [
+   64.88,
+   "11-00057-17",
+   "Black Haw Bark"
+  ],
+  "Black Pepper": [
+   21.0,
+   "11-01050-17",
+   "Peppercorn, Black"
+  ],
+  "Black Walnut": [
+   14.06,
+   "11-00667-17",
+   "Black Walnut Hull Powder"
+  ],
+  "Blessed Thistle": [
+   34.5,
+   "11-00072-17",
+   "Blessed Thistle"
+  ],
+  "Blue Cohosh": [
+   34.88,
+   "11-00842-17",
+   "Blue Cohosh Root"
+  ],
+  "Blue Vervain": [
+   38.63,
+   "11-00080-17",
+   "Blue Vervain"
+  ],
+  "Boneset": [
+   21.75,
+   "11-00083-17",
+   "Boneset"
+  ],
+  "Borage": [
+   35.63,
+   "11-00084-17",
+   "Borage"
+  ],
+  "Bugleweed": [
+   39.75,
+   "11-00094-17",
+   "Bugleweed"
+  ],
+  "Bupleurum": [
+   49.31,
+   "11-00095-17",
+   "Bupleurum Root"
+  ],
+  "Burdock": [
+   21.38,
+   "11-00097-17",
+   "Burdock Root"
+  ],
+  "Calamus": [
+   18.75,
+   "11-00105-17",
+   "Calamus Root"
+  ],
+  "Calendula": [
+   30.75,
+   "11-00108-17",
+   "Calendula Flowers"
+  ],
+  "California Poppy": [
+   48.75,
+   "11-00109-17",
+   "California Poppy"
+  ],
+  "Catnip": [
+   27.75,
+   "11-00122-17",
+   "Catnip"
+  ],
+  "Chamomile": [
+   28.5,
+   "11-00137-17",
+   "Chamomile Flowers"
+  ],
+  "Cinnamon": [
+   12.75,
+   "11-00155-17",
+   "Cinnamon, Cassia Chips"
+  ],
+  "Cleavers": [
+   16.13,
+   "11-00165-17",
+   "Cleavers"
+  ],
+  "Comfrey Root": [
+   19.5,
+   "11-00173-17",
+   "Comfrey Root"
+  ],
+  "Cramp Bark": [
+   47.25,
+   "11-00620-17",
+   "Cramp Bark Powder"
+  ],
+  "Damiana": [
+   21.0,
+   "11-00192-17",
+   "Damiana Leaf"
+  ],
+  "Dandelion Leaf": [
+   23.63,
+   "11-00194-17",
+   "Dandelion Leaf"
+  ],
+  "Dandelion Root": [
+   25.5,
+   "11-00195-17",
+   "Dandelion Root Roasted"
+  ],
+  "Dong Quai": [
+   45.0,
+   "11-00204-17",
+   "Dong Quai Root"
+  ],
+  "Echinacea Augustifolia": [
+   46.5,
+   "11-00211-17",
+   "Echinacea Angustifolia Root"
+  ],
+  "Echinacea Purpurea Leaf": [
+   20.81,
+   "11-00212-17",
+   "Echinacea Purpurea Herb"
+  ],
+  "Echinacea Purpurea Root": [
+   40.88,
+   "11-00214-17",
+   "Echinacea Purpurea Root"
+  ],
+  "Eleuthero": [
+   12.35,
+   "11-00221-17",
+   "Eleuthero Root"
+  ],
+  "Fennel": [
+   14.25,
+   "11-00229-17",
+   "Fennel Seed"
+  ],
+  "Feverfew": [
+   29.63,
+   "11-00233-17",
+   "Feverfew"
+  ],
+  "Gentian": [
+   36.0,
+   "11-00251-17",
+   "Gentian Root"
+  ],
+  "Ginger": [
+   22.5,
+   "11-00253-17",
+   "Ginger Root"
+  ],
+  "Ginkgo": [
+   17.44,
+   "11-00255-17",
+   "Ginkgo Leaf"
+  ],
+  "Goldenrod": [
+   13.88,
+   "11-00260-17",
+   "Goldenrod"
+  ],
+  "Gotu Kola": [
+   25.13,
+   "11-00267-17",
+   "Gotu Kola"
+  ],
+  "Gravel Root": [
+   33.38,
+   "11-00271-17",
+   "Gravel Root"
+  ],
+  "Hawthorn": [
+   12.38,
+   "11-00282-17",
+   "Hawthorn Berries"
+  ],
+  "Hops": [
+   49.5,
+   "11-00295-17",
+   "Hops Flowers"
+  ],
+  "Horse Chestnut": [
+   12.38,
+   "11-00297-17",
+   "Horse Chestnut"
+  ],
+  "Horsetail": [
+   16.31,
+   "11-00299-17",
+   "Horsetail"
+  ],
+  "Hypericum": [
+   14.63,
+   "11-00510-17",
+   "St. John"
+  ],
+  "Hyssop": [
+   34.5,
+   "11-00946-17",
+   "Anise Hyssop"
+  ],
+  "Inula": [
+   28.88,
+   "11-00220-17",
+   "Elecampane Root"
+  ],
+  "Iris": [
+   27.75,
+   "11-00079-17",
+   "Blue Flag Root"
+  ],
+  "Juniper": [
+   21.0,
+   "11-00311-17",
+   "Juniper Berries"
+  ],
+  "Lavender": [
+   37.5,
+   "11-00223-17",
+   "Lavender Flowers, English"
+  ],
+  "Lemon Balm": [
+   27.38,
+   "11-00323-17",
+   "Lemon Balm"
+  ],
+  "Lemongrass": [
+   13.88,
+   "11-00329-17",
+   "Lemongrass Powder"
+  ],
+  "Licorice": [
+   21.38,
+   "11-00330-17",
+   "Licorice Root"
+  ],
+  "Linden": [
+   41.06,
+   "11-00334-17",
+   "Linden"
+  ],
+  "Lycopus": [
+   39.75,
+   "11-00094-17",
+   "Bugleweed"
+  ],
+  "Maca": [
+   12.0,
+   "11-00344-17",
+   "Maca Powder"
+  ],
+  "Marshmallow": [
+   21.75,
+   "11-00352-17",
+   "Marshmallow Leaf"
+  ],
+  "Meadowsweet": [
+   19.13,
+   "11-00358-17",
+   "Meadowsweet Herb"
+  ],
+  "Milk Thistle": [
+   17.25,
+   "11-00362-17",
+   "Milk Thistle Seed"
+  ],
+  "Motherwort": [
+   26.44,
+   "11-00367-17",
+   "Motherwort"
+  ],
+  "Mugwort": [
+   24.0,
+   "11-00368-17",
+   "Mugwort"
+  ],
+  "Mullein": [
+   15.75,
+   "11-00372-17",
+   "Mullein Leaf"
+  ],
+  "Nettle Leaf": [
+   18.75,
+   "11-00378-17",
+   "Nettle Leaf"
+  ],
+  "Nettle Root": [
+   24.75,
+   "11-00380-17",
+   "Nettle Root"
+  ],
+  "Oak": [
+   18.38,
+   "11-01079-17",
+   "White Oak Bark"
+  ],
+  "Ocimum": [
+   12.0,
+   "11-00903-17",
+   "Holy Basil, Krishna"
+  ],
+  "Olive Leaf": [
+   12.75,
+   "11-00391-17",
+   "Olive Leaf"
+  ],
+  "Orange Peel": [
+   21.0,
+   "11-00054-17",
+   "Orange Peel, Bitter"
+  ],
+  "Oregano": [
+   13.88,
+   "11-00361-17",
+   "Oregano Leaf, Mexican"
+  ],
+  "Oregon Grape": [
+   41.63,
+   "11-00401-17",
+   "Oregon Grape Root"
+  ],
+  "Parsley": [
+   18.75,
+   "11-00407-17",
+   "Parsley Leaf"
+  ],
+  "Passion Flower": [
+   20.44,
+   "11-00410-17",
+   "Passionflower"
+  ],
+  "Peony": [
+   22.69,
+   "11-00551-17",
+   "White Peony Root"
+  ],
+  "Peppermint": [
+   19.5,
+   "11-00417-17",
+   "Peppermint Leaf"
+  ],
+  "Periwinkle": [
+   42.56,
+   "11-00418-17",
+   "Periwinkle"
+  ],
+  "Plantain": [
+   30.75,
+   "11-00424-17",
+   "Plantain Leaf"
+  ],
+  "Poppy": [
+   48.75,
+   "11-00109-17",
+   "California Poppy"
+  ],
+  "Raspberry Leaf": [
+   21.0,
+   "11-00442-17",
+   "Raspberry Leaf"
+  ],
+  "Red Clover": [
+   16.13,
+   "11-00446-17",
+   "Red Clover Sprouting Seed"
+  ],
+  "Rheum": [
+   28.5,
+   "11-00529-17",
+   "Turkey Rhubarb Root Powder"
+  ],
+  "Rhodiola": [
+   143.25,
+   "11-01004-17",
+   "Rhodiola Root"
+  ],
+  "Rose": [
+   50.63,
+   "11-00456-17",
+   "Rose Buds Whole"
+  ],
+  "Rosemary": [
+   13.13,
+   "11-00459-17",
+   "Rosemary Leaf Whole"
+  ],
+  "Rue": [
+   16.88,
+   "11-00259-17",
+   "Goats Rue"
+  ],
+  "Rumex": [
+   18.75,
+   "11-00572-17",
+   "Yellow Dock Root"
+  ],
+  "Sage": [
+   15.0,
+   "11-00463-17",
+   "Sage Leaf"
+  ],
+  "Sarsaparilla": [
+   36.19,
+   "11-00464-17",
+   "Sarsaparilla Root, Jamaican"
+  ],
+  "Schisandra": [
+   65.25,
+   "11-00475-17",
+   "Schisandra Berries"
+  ],
+  "Scutellaria": [
+   36.75,
+   "11-36402-17",
+   "Chinese Skullcap Root"
+  ],
+  "Self Heal": [
+   44.25,
+   "11-00479-17",
+   "Self Heal"
+  ],
+  "Shatavari": [
+   15.0,
+   "11-00484-17",
+   "Shatavari Root"
+  ],
+  "Spikenard": [
+   48.0,
+   "11-00505-17",
+   "Spikenard Root"
+  ],
+  "Spilanthes": [
+   45.38,
+   "11-01001-17",
+   "Spilanthes"
+  ],
+  "Stone Root": [
+   34.13,
+   "11-00513-17",
+   "Stone Root"
+  ],
+  "Thyme": [
+   19.5,
+   "11-00524-17",
+   "Thyme Leaf"
+  ],
+  "Tulsi": [
+   56.25,
+   "11-36436-17",
+   "Kapoor Tulsi, US Grown"
+  ],
+  "Valerian": [
+   42.75,
+   "11-00536-17",
+   "Valerian Root"
+  ],
+  "Vitex": [
+   11.25,
+   "11-00541-17",
+   "Vitex Berries"
+  ],
+  "White Oak": [
+   18.38,
+   "11-01079-17",
+   "White Oak Bark"
+  ],
+  "Wild Lettuce": [
+   22.88,
+   "11-00558-17",
+   "Wild Lettuce"
+  ],
+  "Wild Yam": [
+   52.31,
+   "11-00559-17",
+   "Wild Yam Root"
+  ],
+  "Yarrow": [
+   20.44,
+   "11-00570-17",
+   "Yarrow"
+  ]
+ },
+ "clef_old": {
+  "Althea": [
+   24.7208,
+   "445V-500",
+   "MARSHMALLOW root organic"
+  ],
+  "Anise": [
+   20.9106,
+   "501V-500",
+   "ANISE seed organic"
+  ],
+  "Ashwagandha": [
+   19.2777,
+   "496V-500",
+   "ASHWAGANDHA root organic"
+  ],
+  "Astragalus": [
+   27.3516,
+   "509V-500",
+   "ASTRAGALUS root organic"
+  ],
+  "Avena": [
+   28.3495,
+   "409V-500",
+   "GREEN OATSTRAW organic"
+  ],
+  "Bacopa": [
+   74.8427,
+   "230V-500",
+   "BACOPA organic"
+  ],
+  "Black Pepper": [
+   26.5351,
+   "369V-500",
+   "BLACK PEPPER whole organic"
+  ],
+  "Black Walnut": [
+   19.2777,
+   "455V-500",
+   "BLACK WALNUT leaf organic"
+  ],
+  "Burdock": [
+   37.4213,
+   "410V-500",
+   "BURDOCK root organic"
+  ],
+  "Calendula": [
+   28.1227,
+   "416V-250",
+   "CALENDULA flower organic"
+  ],
+  "Catnip": [
+   43.9984,
+   "419V-500",
+   "CATNIP flower leaf organic"
+  ],
+  "Chamomile": [
+   32.3865,
+   "417V-250",
+   "CHAMOMILE flower organic"
+  ],
+  "Cinnamon": [
+   23.1332,
+   "352V-500",
+   "CINNAMON pwdr organic"
+  ],
+  "Dandelion Root": [
+   26.7619,
+   "463V-500",
+   "DANDELION root organic"
+  ],
+  "Echinacea Augustifolia": [
+   77.1106,
+   "429V-250",
+   "ECHINACEA ANGUSTIFOLIA organic"
+  ],
+  "Eleuthero": [
+   32.205,
+   "432V-500",
+   "ELEUTHERO  root organic"
+  ],
+  "Fennel": [
+   10.2058,
+   "436V-500",
+   "FENNEL whole organic"
+  ],
+  "Gentian": [
+   43.6356,
+   "440V-500",
+   "GENTIAN root organic"
+  ],
+  "Ginger": [
+   19.5045,
+   "441V-500",
+   "GINGER pwdr organic"
+  ],
+  "Goldenrod": [
+   27.4423,
+   "486V-500",
+   "GOLDENROD organic"
+  ],
+  "Hawthorn": [
+   20.6384,
+   "408V-500",
+   "HAWTHORN flower leaf organic"
+  ],
+  "Horsetail": [
+   20.6384,
+   "530V-500",
+   "HORSETAIL herb organic"
+  ],
+  "Juniper": [
+   20.6384,
+   "439V-500",
+   "JUNIPER whole organic"
+  ],
+  "Lavender": [
+   58.3319,
+   "513V-500",
+   "LAVENDER flower organic"
+  ],
+  "Lemon Balm": [
+   61.2349,
+   "361V-250",
+   "LEMON BALM leaf organic"
+  ],
+  "Lemongrass": [
+   17.0097,
+   "510V-500",
+   "LEMONGRASS herb organic"
+  ],
+  "Licorice": [
+   14.2881,
+   "467V-500",
+   "LICORICE cut organic"
+  ],
+  "Linden": [
+   38.3285,
+   "489V-500",
+   "LINDEN SAPWOOD Organic"
+  ],
+  "Marshmallow": [
+   24.7208,
+   "445V-500",
+   "MARSHMALLOW root organic"
+  ],
+  "Meadowsweet": [
+   24.7208,
+   "531V-500",
+   "MEADOWSWEET organic"
+  ],
+  "Milk Thistle": [
+   22.9064,
+   "423V-500",
+   "MILK THISTLE seed organic"
+  ],
+  "Mullein": [
+   30.3907,
+   "451V-250",
+   "MULLEIN leaf organic"
+  ],
+  "Ocimum": [
+   65.2719,
+   "544V-500",
+   "HOLY BASIL leaf organic"
+  ],
+  "Orange Peel": [
+   38.5553,
+   "378V-500",
+   "ORANGE peel organic"
+  ],
+  "Oregano": [
+   20.6838,
+   "366V-250",
+   "OREGANO leaf organic"
+  ],
+  "Parsley": [
+   38.5553,
+   "368V-500",
+   "PARSLEY leaf organic"
+  ],
+  "Passion Flower": [
+   49.4415,
+   "459V-500",
+   "PASSIONFLOWER herb organic"
+  ],
+  "Peppermint": [
+   17.6901,
+   "450V-250",
+   "PEPPERMINT organic"
+  ],
+  "Plantain": [
+   50.1219,
+   "464V-500",
+   "PLANTAIN leaf organic"
+  ],
+  "Raspberry Leaf": [
+   33.339,
+   "437V-500",
+   "RED RASPBERRY leaf organic"
+  ],
+  "Red Clover": [
+   34.2462,
+   "474V-500",
+   "RED CLOVER organic"
+  ],
+  "Rose": [
+   40.3697,
+   "214V-250",
+   "ROSE petal organic"
+  ],
+  "Rosemary": [
+   20.8199,
+   "370V-500",
+   "ROSEMARY leaf organic"
+  ],
+  "Rumex": [
+   28.5763,
+   "460V-250",
+   "YELLOW DOCK root organic"
+  ],
+  "Sage": [
+   28.5763,
+   "372V-500",
+   "SAGE leaf organic"
+  ],
+  "Schisandra": [
+   42.5469,
+   "442V-500",
+   "SCHISANDRA berry organic"
+  ],
+  "Scutellaria": [
+   61.2349,
+   "471V-500",
+   "SKULLCAP herb organic"
+  ],
+  "Shatavari": [
+   22.226,
+   "127V-500",
+   "SHATAVARI root pwdr organic"
+  ],
+  "Thyme": [
+   17.4633,
+   "374V-500",
+   "THYME leaf organic"
+  ],
+  "Valerian": [
+   31.2978,
+   "475V-500",
+   "VALERIAN root organic"
+  ],
+  "Yarrow": [
+   18.0983,
+   "401V-500",
+   "YARROW organic"
+  ]
+ }
+}
