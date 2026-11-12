@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useActivityLog, ActivityEntry } from '@/contexts/ActivityLogContext';
 import { useAddInventory, useDeleteInventory, useUpdateInventory } from '@/hooks/useInventory';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,13 @@ function entryLabel(entry: ActivityEntry): string {
     case 'remove':
       return `Removed ${a.herbName} from ${a.location}`;
     case 'status_change':
+      if (a.prevStatus === a.newStatus) {
+        return a.prevTinctureStartedAt !== undefined
+          ? `${a.herbName} in ${a.location}: restarted`
+          : a.prevNotes !== undefined
+          ? `${a.herbName} in ${a.location}: size changed`
+          : `${a.herbName} in ${a.location}: quantity changed`;
+      }
       return `${a.herbName} in ${a.location}: ${a.prevStatus} → ${a.newStatus}`;
   }
 }
@@ -48,7 +56,9 @@ function undoDescription(entry: ActivityEntry): string {
     case 'remove':
       return `Re-add ${a.herbName} to ${a.location} as ${a.status}?`;
     case 'status_change':
-      return `Change ${a.herbName} in ${a.location} back to ${a.prevStatus}?`;
+      return a.prevStatus === a.newStatus
+        ? `Restore ${a.herbName} in ${a.location} to how it was before?`
+        : `Change ${a.herbName} in ${a.location} back to ${a.prevStatus}?`;
   }
 }
 
@@ -66,6 +76,7 @@ export function ActivityLogButton() {
   const [pendingUndo, setPendingUndo] = useState<ActivityEntry | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
 
+  const queryClient = useQueryClient();
   const addInventory = useAddInventory();
   const deleteInventory = useDeleteInventory();
   const updateInventory = useUpdateInventory();
@@ -89,12 +100,38 @@ export function ActivityLogButton() {
           tincture_started_at: a.tincture_started_at,
           tincture_ready_at: a.tincture_ready_at,
           current_batch_id: a.current_batch_id,
+          ...(a.quantity !== undefined ? { quantity: a.quantity } : {}),
           user_id: user.id,
         });
         if (error) throw error;
+        if (a.pressed) {
+          // Reverse the press: batch goes back to macerating, any batch the
+          // press archived becomes active again, and clinic/backstock tags revert.
+          const { batchId, archivedBatchIds, priorTags } = a.pressed;
+          const { error: batchErr } = await supabase
+            .from('tincture_batches')
+            .update({ status: 'macerating', pressed_date: null })
+            .eq('id', batchId);
+          if (batchErr) throw batchErr;
+          if (archivedBatchIds.length > 0) {
+            await supabase.from('tincture_batches').update({ status: 'active' }).in('id', archivedBatchIds);
+          }
+          for (const t of priorTags) {
+            await supabase.from('inventory').update({ current_batch_id: t.current_batch_id }).eq('id', t.id);
+          }
+          queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['inventory'] });
         toast.success(`Re-added ${a.herbName} to ${a.location}`);
       } else if (a.type === 'status_change') {
-        await updateInventory.mutateAsync({ id: a.inventoryId, status: a.prevStatus });
+        await updateInventory.mutateAsync({
+          id: a.inventoryId,
+          status: a.prevStatus,
+          ...(a.prevQuantity !== undefined ? { quantity: a.prevQuantity } : {}),
+          ...(a.prevNotes !== undefined ? { notes: a.prevNotes } : {}),
+          ...(a.prevTinctureStartedAt !== undefined ? { tincture_started_at: a.prevTinctureStartedAt } : {}),
+          ...(a.prevTinctureReadyAt !== undefined ? { tincture_ready_at: a.prevTinctureReadyAt } : {}),
+        });
         toast.success(`Reverted ${a.herbName} to ${a.prevStatus}`);
       }
       removeEntry(pendingUndo.id);

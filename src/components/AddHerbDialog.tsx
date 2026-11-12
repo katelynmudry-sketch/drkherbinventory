@@ -89,7 +89,14 @@ export function AddHerbDialog() {
     setLocation(v);
     setStatus(DEFAULT_STATUS[v]);
     setQuantity(1);
+    // Staged herbs were picked for the old location (remove mode only lists herbs in it)
+    setStaged([]);
   };
+
+  const freshTinctureTimes = () => ({
+    tincture_started_at: new Date().toISOString(),
+    tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+  });
 
   const filteredHerbs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -124,16 +131,27 @@ export function AddHerbDialog() {
     setStaged(prev => prev.filter(s => s.name !== name));
   };
 
-  // Only status changes are undoable from the log; skip no-op status changes
-  const logStatusChange = (inventoryId: string, herb: Herb, prevStatus: InventoryStatus, newStatus: InventoryStatus) => {
-    if (prevStatus === newStatus) return;
+  // Log an update to an existing row, snapshotting what Undo needs to restore
+  type PrevRow = {
+    status: InventoryStatus;
+    quantity: number;
+    notes: string | null;
+    tincture_started_at: string | null;
+    tincture_ready_at: string | null;
+  };
+  const logStatusChange = (inventoryId: string, herb: Herb, prev: PrevRow, newStatus: InventoryStatus) => {
     logActivity({
       type: 'status_change',
       inventoryId,
       herbName: getDisplayName(herb),
       location,
-      prevStatus,
+      prevStatus: prev.status,
       newStatus,
+      prevQuantity: prev.quantity,
+      ...(location === 'backstock' ? { prevNotes: prev.notes } : {}),
+      ...(location === 'tincture'
+        ? { prevTinctureStartedAt: prev.tincture_started_at, prevTinctureReadyAt: prev.tincture_ready_at }
+        : {}),
     });
   };
 
@@ -148,6 +166,7 @@ export function AddHerbDialog() {
           toast.error(`${entry.name} isn't in ${LOCATION_LABELS[location]}`);
           continue;
         }
+        let pressed: { batchId: string; archivedBatchIds: string[]; priorTags: { id: string; current_batch_id: string | null }[] } | undefined;
         if (location === 'tincture') {
           // Pressed: batch becomes active, tincture jar row is removed
           const { data: batch } = await supabase
@@ -157,7 +176,28 @@ export function AddHerbDialog() {
             .eq('status', 'macerating')
             .maybeSingle();
           const batchId = batch?.id ?? row.current_batch_id ?? null;
-          if (batchId) await pressBatch.mutateAsync(batchId);
+          if (batchId) {
+            // Snapshot what pressing changes so Undo can reverse it
+            // Read errors abort BEFORE anything is changed, so Undo is never lossy
+            const { data: activeBefore, error: beforeErr } = await supabase
+              .from('tincture_batches').select('id')
+              .eq('herb_id', row.herb_id).eq('status', 'active');
+            const { data: tagRows, error: tagErr } = await supabase
+              .from('inventory').select('id, current_batch_id')
+              .eq('herb_id', row.herb_id).in('location', ['backstock', 'clinic']);
+            if (beforeErr || tagErr) throw beforeErr ?? tagErr;
+            await pressBatch.mutateAsync(batchId);
+            const { data: activeAfter, error: afterErr } = await supabase
+              .from('tincture_batches').select('id')
+              .eq('herb_id', row.herb_id).eq('status', 'active');
+            if (afterErr) throw afterErr;
+            const afterIds = new Set((activeAfter ?? []).map(b => b.id));
+            pressed = {
+              batchId,
+              archivedBatchIds: (activeBefore ?? []).map(b => b.id).filter(id => !afterIds.has(id)),
+              priorTags: (tagRows ?? []) as { id: string; current_batch_id: string | null }[],
+            };
+          }
         }
         await deleteInventory.mutateAsync(row.id);
         // Log with a full snapshot so Undo can restore the row
@@ -171,6 +211,8 @@ export function AddHerbDialog() {
           tincture_started_at: row.tincture_started_at,
           tincture_ready_at: row.tincture_ready_at,
           current_batch_id: row.current_batch_id,
+          quantity: row.quantity,
+          ...(pressed ? { pressed } : {}),
         });
         doneCount++;
       } catch (error: any) {
@@ -207,14 +249,15 @@ export function AddHerbDialog() {
 
         // Build the row we'd insert; if the herb is already in this location
         // we update the existing row to these values instead.
-        let desired: { status: InventoryStatus; quantity?: number; notes?: string };
+        // Backstock always sets notes (null clears an old size when "untagged")
+        let desired: { status: InventoryStatus; quantity?: number; notes?: string | null };
         if (isLbLocation) {
           const herbThreshold = herb.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
           desired = { status: calcBulkStatus(quantity, herbThreshold), quantity };
         } else {
           const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
           const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
-          desired = { status: inventoryStatus, ...(notes ? { notes } : {}) };
+          desired = { status: inventoryStatus, ...(location === 'backstock' ? { notes: notes ?? null } : {}) };
         }
 
         const existingRow = existingInventory.find(i => i.herb_id === herb!.id);
@@ -225,23 +268,26 @@ export function AddHerbDialog() {
             await updateInventory.mutateAsync({
               id: existingRow.id,
               ...desired,
-              tincture_started_at: new Date().toISOString(),
-              tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+              ...freshTinctureTimes(),
             });
-            logStatusChange(existingRow.id, herb, existingRow.status, desired.status);
+            logStatusChange(existingRow.id, herb, existingRow, desired.status);
             updatedCount++;
-          } else if (existingRow.status === desired.status && (desired.quantity === undefined || existingRow.quantity === desired.quantity)) {
+          } else if (
+            existingRow.status === desired.status &&
+            (desired.quantity === undefined || existingRow.quantity === desired.quantity) &&
+            (desired.notes === undefined || (existingRow.notes ?? null) === desired.notes)
+          ) {
             toast.info(`${entry.name} is already ${desired.status} in ${LOCATION_LABELS[location]}`);
           } else {
             await updateInventory.mutateAsync({ id: existingRow.id, ...desired });
-            logStatusChange(existingRow.id, herb, existingRow.status, desired.status);
+            logStatusChange(existingRow.id, herb, existingRow, desired.status);
             updatedCount++;
           }
           continue;
         }
 
         try {
-          const created = await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired });
+          const created = await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired, notes: desired.notes ?? undefined });
           logActivity({
             type: 'add',
             inventoryId: created.id,
@@ -255,7 +301,7 @@ export function AddHerbDialog() {
           if (insertError?.code === '23505') {
             const { data: row, error: lookupError } = await supabase
               .from('inventory')
-              .select('id, status')
+              .select('id, status, quantity, notes, tincture_started_at, tincture_ready_at')
               .eq('herb_id', herb.id)
               .eq('location', location)
               .maybeSingle();
@@ -263,12 +309,9 @@ export function AddHerbDialog() {
             await updateInventory.mutateAsync({
               id: row.id,
               ...desired,
-              ...(location === 'tincture' ? {
-                tincture_started_at: new Date().toISOString(),
-                tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-              } : {}),
+              ...(location === 'tincture' ? freshTinctureTimes() : {}),
             });
-            logStatusChange(row.id, herb, row.status as InventoryStatus, desired.status);
+            logStatusChange(row.id, herb, row as PrevRow, desired.status);
             updatedCount++;
             continue;
           }

@@ -24,6 +24,14 @@ export type ActivityAction =
       tincture_started_at: string | null;
       tincture_ready_at: string | null;
       current_batch_id: string | null;
+      quantity?: number;
+      // Set when the removal was a tincture "Pressed": lets Undo put the batch
+      // back to macerating and undo the side effects of pressing.
+      pressed?: {
+        batchId: string;
+        archivedBatchIds: string[];
+        priorTags: { id: string; current_batch_id: string | null }[];
+      };
     }
   | {
       type: 'status_change';
@@ -32,6 +40,11 @@ export type ActivityAction =
       location: InventoryLocation;
       prevStatus: InventoryStatus;
       newStatus: InventoryStatus;
+      // Optional extra previous values restored by Undo
+      prevQuantity?: number;
+      prevNotes?: string | null; // backstock size
+      prevTinctureStartedAt?: string | null;
+      prevTinctureReadyAt?: string | null;
     };
 
 export interface ActivityEntry {
