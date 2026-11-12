@@ -1,15 +1,37 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useInventory } from "@/hooks/useInventory";
+import { useInventory, InventoryItem, InventoryLocation } from "@/hooks/useInventory";
+import { DEFAULT_LOW_THRESHOLD, formatLbs } from "@/lib/bulkUnits";
 import { Leaf } from "lucide-react";
+
+// Locations that track an actual lb quantity (status is derived from quantity vs. the herb's threshold)
+const LB_LOCATIONS: ReadonlySet<InventoryLocation> = new Set(["bulk", "bulk_backstock", "bulk_clinic"]);
+
+const LOCATION_CARDS: { location: InventoryLocation; title: string }[] = [
+  { location: "tincture", title: "Tinctures" },
+  { location: "bulk", title: "Bulk herbs" },
+  { location: "bulk_clinic", title: "Clinic Bulk" },
+  { location: "bulk_backstock", title: "Bulk Backstock" },
+  { location: "clinic", title: "Clinic stock" },
+  { location: "backstock", title: "Backstock" },
+];
+
+type Level = "out" | "low" | "ok";
+
+const levelOf = (item: InventoryItem): Level => {
+  if (LB_LOCATIONS.has(item.location as InventoryLocation)) {
+    const qty = Number(item.quantity ?? 0);
+    const threshold = Number(item.herbs?.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD);
+    if (qty <= 0) return "out";
+    if (qty <= threshold) return "low";
+    return "ok";
+  }
+  if (item.status === "out") return "out";
+  if (item.status === "low") return "low";
+  return "ok";
+};
 
 const Reports = () => {
   const { data: inventory = [], isLoading } = useInventory();
-
-  const totalItems = inventory.length;
-  const tinctures = inventory.filter((item) => item.location === "tincture");
-  const bulk = inventory.filter((item) => item.location === "bulk");
-  const clinic = inventory.filter((item) => item.location === "clinic");
-  const backstock = inventory.filter((item) => item.location === "backstock");
 
   if (isLoading) {
     return (
@@ -18,6 +40,24 @@ const Reports = () => {
       </div>
     );
   }
+
+  const stats = LOCATION_CARDS.map(({ location, title }) => {
+    const items = inventory.filter((item) => item.location === location);
+    const levels = items.map(levelOf);
+    const isLb = LB_LOCATIONS.has(location);
+    return {
+      location,
+      title,
+      isLb,
+      total: items.length,
+      out: levels.filter((l) => l === "out").length,
+      low: levels.filter((l) => l === "low").length,
+      lbs: isLb ? items.reduce((sum, i) => sum + Number(i.quantity ?? 0), 0) : null,
+    };
+  });
+
+  const totalOut = stats.reduce((sum, s) => sum + s.out, 0);
+  const totalLow = stats.reduce((sum, s) => sum + s.low, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-amber-50 dark:from-green-950/20 dark:to-amber-950/20">
@@ -34,61 +74,61 @@ const Reports = () => {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle>Total items</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{totalItems}</p>
+              <p className="text-3xl font-bold">{inventory.length}</p>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="border-red-500/30">
             <CardHeader>
-              <CardTitle>Tinctures</CardTitle>
+              <CardTitle>Out</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{tinctures.length}</p>
+              <p className="text-3xl font-bold text-red-700 dark:text-red-400">{totalOut}</p>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="border-yellow-500/30">
             <CardHeader>
-              <CardTitle>Bulk herbs</CardTitle>
+              <CardTitle>Low</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{bulk.length}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Clinic stock</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{clinic.length}</p>
+              <p className="text-3xl font-bold text-yellow-700 dark:text-yellow-400">{totalLow}</p>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Backstock</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{backstock.length}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Items stored in backstock and not yet in active clinic use.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {stats.map((s) => (
+            <Card key={s.location}>
+              <CardHeader>
+                <CardTitle>{s.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-3xl font-bold">{s.total}</p>
+                <div className="flex flex-wrap gap-2 text-xs font-medium">
+                  <span className="rounded-full bg-red-500/20 px-2 py-1 text-red-700 dark:text-red-400">
+                    {s.out} out
+                  </span>
+                  <span className="rounded-full bg-yellow-500/20 px-2 py-1 text-yellow-700 dark:text-yellow-400">
+                    {s.low} low
+                  </span>
+                  {s.lbs !== null && (
+                    <span className="rounded-full bg-green-500/20 px-2 py-1 text-green-700 dark:text-green-400">
+                      {formatLbs(s.lbs)} lb total
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </main>
     </div>
   );
 };
 
 export default Reports;
-
-
-
