@@ -18,54 +18,63 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAddHerb, useAddInventory, useUpdateInventory, useDeleteInventory, getDisplayName, Herb, useInventory, useHerbs, InventoryLocation, InventoryStatus } from '@/hooks/useInventory';
+import {
+  useAddHerb, useDeleteHerb, useAddInventory, useUpdateInventory, useDeleteInventory,
+  getDisplayName, Herb, InventoryItem, useInventory, useHerbs, InventoryLocation, InventoryStatus,
+} from '@/hooks/useInventory';
 import { useActivityLog } from '@/contexts/ActivityLogContext';
-import { usePressBatch } from '@/hooks/useTinctureBatches';
+import { usePressTinctureHerb, PressSnapshot } from '@/hooks/useTinctureBatches';
 import { supabase } from '@/integrations/supabase/client';
 import { LB_OPTIONS, DEFAULT_LOW_THRESHOLD, formatLbs, calcBulkStatus } from '@/lib/bulkUnits';
+import { LOCATION_LABELS, LOCATIONS, plural, errorCode } from '@/lib/inventoryLabels';
 import { useHerbDetail } from '@/components/HerbDetail';
 import { toast } from 'sonner';
 
-const STATUS_OPTIONS: Record<InventoryLocation, { value: string; label: string }[]> = {
-  clinic:        [{ value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
-  backstock:     [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }],
-  tincture:      [],
-  bulk:          [],
-  bulk_backstock:[],
-  bulk_clinic:   [],
+// Choices for the Status / Size picker (only clinic and backstock have one)
+const STATUS_OPTIONS: Partial<Record<InventoryLocation, { value: string; label: string }[]>> = {
+  clinic:    [{ value: 'low', label: 'Low' }, { value: 'out', label: 'Out' }],
+  backstock: [{ value: 'small', label: 'Small' }, { value: 'large', label: 'Large' }],
 };
 
-const DEFAULT_STATUS: Record<InventoryLocation, string> = {
-  clinic:        'low',
-  backstock:     'untagged',
-  tincture:      'full',
-  bulk:          'full',
-  bulk_backstock:'full',
-  bulk_clinic:   'full',
+// Starting value of the picker. For backstock it is a SIZE ('untagged' = none);
+// for clinic it is the status.
+const DEFAULT_PICK: Partial<Record<InventoryLocation, string>> = {
+  clinic: 'low',
+  backstock: 'untagged',
 };
+const defaultPick = (l: InventoryLocation) => DEFAULT_PICK[l] ?? 'full';
 
 // Bulk-style locations track an actual lb quantity instead of a full/low/out status
 const LB_LOCATIONS: ReadonlySet<InventoryLocation> = new Set(['bulk', 'bulk_backstock', 'bulk_clinic']);
 
-const LOCATION_LABELS: Record<InventoryLocation, string> = {
-  clinic: 'Clinic',
-  backstock: 'Backstock',
-  tincture: 'Tincture',
-  bulk: 'Bulk',
-  bulk_backstock: 'Bulk Backstock',
-  bulk_clinic: 'Clinic Bulk',
-};
+const TINCTURE_DAYS = 14;
+const freshTinctureTimes = () => ({
+  tincture_started_at: new Date().toISOString(),
+  tincture_ready_at: new Date(Date.now() + TINCTURE_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+});
 
 interface StagedHerb {
   name: string;
   isNew: boolean;
+  herbId?: string; // set for herbs picked from the existing list
 }
+
+// What we want a row to look like after an add. For backstock, notes always
+// carries the size (null clears an old one when "untagged").
+interface DesiredRow {
+  status: InventoryStatus;
+  quantity?: number;
+  notes?: string | null;
+}
+
+type AddResult = 'added' | 'updated' | 'unchanged';
 
 export function AddHerbDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState<InventoryLocation>('clinic');
-  const [status, setStatus] = useState<string>(DEFAULT_STATUS['clinic']);
+  // Clinic: the status. Backstock: the size ('untagged' for none).
+  const [statusOrSize, setStatusOrSize] = useState<string>(defaultPick('clinic'));
   const [quantity, setQuantity] = useState(1);
   const [staged, setStaged] = useState<StagedHerb[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -73,30 +82,37 @@ export function AddHerbDialog() {
 
   const { data: existingHerbs = [] } = useHerbs();
   const addHerb = useAddHerb();
+  const deleteHerb = useDeleteHerb();
   const addInventory = useAddInventory();
   const updateInventory = useUpdateInventory();
   const deleteInventory = useDeleteInventory();
-  const pressBatch = usePressBatch();
+  const pressTinctureHerb = usePressTinctureHerb();
   const { logActivity } = useActivityLog();
   const { data: existingInventory = [] } = useInventory(location);
   const { openHerb } = useHerbDetail();
 
   const isLbLocation = LB_LOCATIONS.has(location);
   const isRemove = mode === 'remove';
-  const removeVerb = location === 'tincture' ? 'Press' : 'Remove';
+  const isTincture = location === 'tincture';
+  const locationLabel = LOCATION_LABELS[location];
+
+  const resetPicks = (l: InventoryLocation) => {
+    setStatusOrSize(defaultPick(l));
+    setQuantity(1);
+  };
 
   const handleLocationChange = (v: InventoryLocation) => {
     setLocation(v);
-    setStatus(DEFAULT_STATUS[v]);
-    setQuantity(1);
+    resetPicks(v);
     // Staged herbs were picked for the old location (remove mode only lists herbs in it)
     setStaged([]);
   };
 
-  const freshTinctureTimes = () => ({
-    tincture_started_at: new Date().toISOString(),
-    tincture_ready_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-  });
+  const changeMode = (m: 'add' | 'remove') => {
+    setMode(m);
+    setStaged([]);
+    setSearch('');
+  };
 
   const filteredHerbs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -116,13 +132,13 @@ export function AddHerbDialog() {
   );
   const isNewHerb = !isRemove && search.trim().length > 0 && !exactMatch;
 
-  const stageHerb = (name: string, isNew: boolean) => {
+  const stageHerb = (name: string, isNew: boolean, herbId?: string) => {
     if (!name.trim()) return;
     const displayName = isNew
       ? name.trim().charAt(0).toUpperCase() + name.trim().slice(1)
       : name;
     if (!staged.find(s => s.name.toLowerCase() === displayName.toLowerCase())) {
-      setStaged(prev => [...prev, { name: displayName, isNew }]);
+      setStaged(prev => [...prev, { name: displayName, isNew, herbId }]);
     }
     setSearch('');
   };
@@ -131,80 +147,168 @@ export function AddHerbDialog() {
     setStaged(prev => prev.filter(s => s.name !== name));
   };
 
-  // Log an update to an existing row, snapshotting what Undo needs to restore
-  type PrevRow = {
-    status: InventoryStatus;
-    quantity: number;
-    notes: string | null;
-    tincture_started_at: string | null;
-    tincture_ready_at: string | null;
+  const resolveHerb = (entry: StagedHerb): Herb | undefined =>
+    entry.herbId
+      ? existingHerbs.find(h => h.id === entry.herbId)
+      : existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
+
+  // Live lookup of this herb's row in the selected location. Always used
+  // instead of the cached list so updates, and the values saved for Undo,
+  // are never stale.
+  const findRow = async (herbId: string): Promise<InventoryItem | null> => {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('herb_id', herbId)
+      .eq('location', location)
+      .maybeSingle();
+    if (error) throw error;
+    return data as InventoryItem | null;
   };
-  const logStatusChange = (inventoryId: string, herb: Herb, prev: PrevRow, newStatus: InventoryStatus) => {
+
+  // Log an update to an existing row, snapshotting what Undo needs to restore
+  const logUpdate = (herb: Herb, prev: InventoryItem, newStatus: InventoryStatus) => {
     logActivity({
       type: 'status_change',
-      inventoryId,
+      inventoryId: prev.id,
       herbName: getDisplayName(herb),
       location,
       prevStatus: prev.status,
       newStatus,
       prevQuantity: prev.quantity,
-      ...(location === 'backstock' ? { prevNotes: prev.notes } : {}),
-      ...(location === 'tincture'
-        ? { prevTinctureStartedAt: prev.tincture_started_at, prevTinctureReadyAt: prev.tincture_ready_at }
+      ...(location === 'backstock' ? { prevNotes: prev.notes, change: 'size' as const } : {}),
+      ...(isTincture
+        ? {
+            prevTinctureStartedAt: prev.tincture_started_at,
+            prevTinctureReadyAt: prev.tincture_ready_at,
+            change: 'restart' as const,
+          }
         : {}),
+      ...(isLbLocation ? { change: 'quantity' as const } : {}),
     });
   };
 
-  const handleRemoveConfirm = async () => {
-    setIsProcessing(true);
-    let doneCount = 0;
+  const buildDesired = (herb: Herb): DesiredRow => {
+    if (isLbLocation) {
+      const threshold = herb.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
+      return { status: calcBulkStatus(quantity, threshold), quantity };
+    }
+    if (location === 'backstock') {
+      return {
+        status: 'full',
+        notes: statusOrSize && statusOrSize !== 'untagged' ? statusOrSize : null,
+      };
+    }
+    return { status: (statusOrSize as InventoryStatus) || 'full' };
+  };
+
+  // Add one staged herb to the location, or update it if it's already there.
+  // A herb created just for this entry is deleted again if the inventory step fails.
+  const processAddEntry = async (entry: StagedHerb): Promise<{ result: AddResult; newHerbId?: string }> => {
+    let herb = resolveHerb(entry);
+    let newHerbId: string | undefined;
+    if (!herb) {
+      herb = await addHerb.mutateAsync({ name: entry.name });
+      newHerbId = herb.id;
+    }
+
+    try {
+      const desired = buildDesired(herb);
+      let row = await findRow(herb.id);
+
+      if (!row) {
+        try {
+          const created = await addInventory.mutateAsync({
+            herb_id: herb.id,
+            location,
+            ...desired,
+            notes: desired.notes ?? undefined,
+          });
+          logActivity({
+            type: 'add',
+            inventoryId: created.id,
+            herb_id: herb.id,
+            herbName: getDisplayName(herb),
+            location,
+            status: desired.status,
+          });
+          return { result: 'added', newHerbId };
+        } catch (insertError) {
+          // Someone added it between our lookup and insert: fall through and update it
+          if (errorCode(insertError) !== '23505') throw insertError;
+          row = await findRow(herb.id);
+          if (!row) throw insertError;
+        }
+      }
+
+      if (isTincture) {
+        // Re-adding a tincture starts a fresh one: restart the timer
+        await updateInventory.mutateAsync({ id: row.id, ...desired, ...freshTinctureTimes() });
+      } else if (
+        row.status === desired.status &&
+        (desired.quantity === undefined || row.quantity === desired.quantity) &&
+        (desired.notes === undefined || (row.notes ?? null) === desired.notes)
+      ) {
+        toast.info(`${entry.name} is already ${desired.status} in ${locationLabel}`);
+        return { result: 'unchanged', newHerbId };
+      } else {
+        await updateInventory.mutateAsync({ id: row.id, ...desired });
+      }
+      logUpdate(herb, row, desired.status);
+      return { result: 'updated', newHerbId };
+    } catch (error) {
+      if (newHerbId) await deleteHerb.mutateAsync(newHerbId).catch(() => {});
+      throw error;
+    }
+  };
+
+  const handleAddConfirm = async () => {
+    let added = 0;
+    let updated = 0;
+    let firstNewHerbId: string | undefined;
     for (const entry of staged) {
       try {
-        const herb = existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
-        const row = herb && existingInventory.find(i => i.herb_id === herb.id);
-        if (!row) {
-          toast.error(`${entry.name} isn't in ${LOCATION_LABELS[location]}`);
+        const { result, newHerbId } = await processAddEntry(entry);
+        if (result === 'added') added++;
+        if (result === 'updated') updated++;
+        if (newHerbId && !firstNewHerbId) firstNewHerbId = newHerbId;
+      } catch (error) {
+        if (errorCode(error) === '23505') {
+          toast.error(`${entry.name} already exists in ${locationLabel}`);
+        } else {
+          toast.error(`Failed to add ${entry.name}`);
+          console.error(error);
+        }
+      }
+    }
+    if (added > 0) toast.success(`Added ${plural(added, 'herb')} to ${locationLabel}`);
+    if (updated > 0) toast.success(`Updated ${plural(updated, 'herb')} already in ${locationLabel}`);
+    return firstNewHerbId;
+  };
+
+  const handleRemoveConfirm = async () => {
+    let done = 0;
+    for (const entry of staged) {
+      try {
+        const herb = resolveHerb(entry);
+        const row = herb ? await findRow(herb.id) : null;
+        if (!herb || !row) {
+          toast.error(`${entry.name} isn't in ${locationLabel}`);
           continue;
         }
-        let pressed: { batchId: string; archivedBatchIds: string[]; priorTags: { id: string; current_batch_id: string | null }[] } | undefined;
-        if (location === 'tincture') {
-          // Pressed: batch becomes active, tincture jar row is removed
-          const { data: batch } = await supabase
-            .from('tincture_batches')
-            .select('id')
-            .eq('herb_id', row.herb_id)
-            .eq('status', 'macerating')
-            .maybeSingle();
-          const batchId = batch?.id ?? row.current_batch_id ?? null;
-          if (batchId) {
-            // Snapshot what pressing changes so Undo can reverse it
-            // Read errors abort BEFORE anything is changed, so Undo is never lossy
-            const { data: activeBefore, error: beforeErr } = await supabase
-              .from('tincture_batches').select('id')
-              .eq('herb_id', row.herb_id).eq('status', 'active');
-            const { data: tagRows, error: tagErr } = await supabase
-              .from('inventory').select('id, current_batch_id')
-              .eq('herb_id', row.herb_id).in('location', ['backstock', 'clinic']);
-            if (beforeErr || tagErr) throw beforeErr ?? tagErr;
-            await pressBatch.mutateAsync(batchId);
-            const { data: activeAfter, error: afterErr } = await supabase
-              .from('tincture_batches').select('id')
-              .eq('herb_id', row.herb_id).eq('status', 'active');
-            if (afterErr) throw afterErr;
-            const afterIds = new Set((activeAfter ?? []).map(b => b.id));
-            pressed = {
-              batchId,
-              archivedBatchIds: (activeBefore ?? []).map(b => b.id).filter(id => !afterIds.has(id)),
-              priorTags: (tagRows ?? []) as { id: string; current_batch_id: string | null }[],
-            };
-          }
+        // Tincture "Pressed" presses the batch and clears the jar row atomically
+        let pressed: PressSnapshot | null = null;
+        if (isTincture) {
+          pressed = await pressTinctureHerb.mutateAsync(row);
+        } else {
+          await deleteInventory.mutateAsync(row.id);
         }
-        await deleteInventory.mutateAsync(row.id);
         // Log with a full snapshot so Undo can restore the row
         logActivity({
           type: 'remove',
+          inventoryId: row.id,
           herb_id: row.herb_id,
-          herbName: herb ? getDisplayName(herb) : entry.name,
+          herbName: getDisplayName(herb),
           location,
           status: row.status,
           notes: row.notes,
@@ -214,136 +318,17 @@ export function AddHerbDialog() {
           quantity: row.quantity,
           ...(pressed ? { pressed } : {}),
         });
-        doneCount++;
-      } catch (error: any) {
-        toast.error(`Failed to ${removeVerb.toLowerCase()} ${entry.name}`);
+        done++;
+      } catch (error) {
+        toast.error(`Failed to ${isTincture ? 'press' : 'remove'} ${entry.name}`);
         console.error(error);
       }
     }
-    if (doneCount > 0) {
-      toast.success(location === 'tincture'
-        ? `Pressed ${doneCount} herb${doneCount > 1 ? 's' : ''}`
-        : `Removed ${doneCount} herb${doneCount > 1 ? 's' : ''} from ${LOCATION_LABELS[location]}`);
+    if (done > 0) {
+      toast.success(isTincture
+        ? `Pressed ${plural(done, 'herb')}`
+        : `Removed ${plural(done, 'herb')} from ${locationLabel}`);
     }
-    setStaged([]);
-    setSearch('');
-    setIsProcessing(false);
-    setIsOpen(false);
-  };
-
-  const handleConfirm = async () => {
-    if (staged.length === 0) return;
-    if (isRemove) return handleRemoveConfirm();
-    setIsProcessing(true);
-
-    let successCount = 0;
-    let updatedCount = 0;
-    let firstNewHerbId: string | null = null;
-    for (const entry of staged) {
-      try {
-        let herb = existingHerbs.find(h => h.name.toLowerCase() === entry.name.toLowerCase());
-        if (!herb) {
-          herb = await addHerb.mutateAsync({ name: entry.name });
-          if (!firstNewHerbId) firstNewHerbId = herb.id;
-        }
-
-        // Build the row we'd insert; if the herb is already in this location
-        // we update the existing row to these values instead.
-        // Backstock always sets notes (null clears an old size when "untagged")
-        let desired: { status: InventoryStatus; quantity?: number; notes?: string | null };
-        if (isLbLocation) {
-          const herbThreshold = herb.low_threshold_lb ?? DEFAULT_LOW_THRESHOLD;
-          desired = { status: calcBulkStatus(quantity, herbThreshold), quantity };
-        } else {
-          const inventoryStatus: InventoryStatus = location === 'backstock' ? 'full' : (status as InventoryStatus) || 'full';
-          const notes = location === 'backstock' && status && status !== 'untagged' ? status : undefined;
-          desired = { status: inventoryStatus, ...(location === 'backstock' ? { notes: notes ?? null } : {}) };
-        }
-
-        const existingRow = existingInventory.find(i => i.herb_id === herb!.id);
-
-        if (existingRow) {
-          if (location === 'tincture') {
-            // Re-adding a tincture starts a fresh one: restart the 14-day timer
-            await updateInventory.mutateAsync({
-              id: existingRow.id,
-              ...desired,
-              ...freshTinctureTimes(),
-            });
-            logStatusChange(existingRow.id, herb, existingRow, desired.status);
-            updatedCount++;
-          } else if (
-            existingRow.status === desired.status &&
-            (desired.quantity === undefined || existingRow.quantity === desired.quantity) &&
-            (desired.notes === undefined || (existingRow.notes ?? null) === desired.notes)
-          ) {
-            toast.info(`${entry.name} is already ${desired.status} in ${LOCATION_LABELS[location]}`);
-          } else {
-            await updateInventory.mutateAsync({ id: existingRow.id, ...desired });
-            logStatusChange(existingRow.id, herb, existingRow, desired.status);
-            updatedCount++;
-          }
-          continue;
-        }
-
-        try {
-          const created = await addInventory.mutateAsync({ herb_id: herb.id, location, ...desired, notes: desired.notes ?? undefined });
-          logActivity({
-            type: 'add',
-            inventoryId: created.id,
-            herb_id: herb.id,
-            herbName: getDisplayName(herb),
-            location,
-            status: desired.status,
-          });
-        } catch (insertError: any) {
-          // Row exists but wasn't in the cached list — look it up and update it
-          if (insertError?.code === '23505') {
-            const { data: row, error: lookupError } = await supabase
-              .from('inventory')
-              .select('id, status, quantity, notes, tincture_started_at, tincture_ready_at')
-              .eq('herb_id', herb.id)
-              .eq('location', location)
-              .maybeSingle();
-            if (lookupError || !row) throw insertError;
-            await updateInventory.mutateAsync({
-              id: row.id,
-              ...desired,
-              ...(location === 'tincture' ? freshTinctureTimes() : {}),
-            });
-            logStatusChange(row.id, herb, row as PrevRow, desired.status);
-            updatedCount++;
-            continue;
-          }
-          throw insertError;
-        }
-
-        successCount++;
-      } catch (error: any) {
-        if (error?.code === '23505') {
-          toast.error(`${entry.name} already exists in ${LOCATION_LABELS[location]}`);
-        } else {
-          toast.error(`Failed to add ${entry.name}`);
-          console.error(error);
-        }
-      }
-    }
-
-    if (successCount > 0) {
-      toast.success(`Added ${successCount} herb${successCount > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`);
-    }
-    if (updatedCount > 0) {
-      toast.success(`Updated ${updatedCount} herb${updatedCount > 1 ? 's' : ''} already in ${LOCATION_LABELS[location]}`);
-    }
-
-    setStaged([]);
-    setSearch('');
-    setStatus(DEFAULT_STATUS[location]);
-    setQuantity(1);
-    setIsProcessing(false);
-    setIsOpen(false);
-    // New herb created — go straight to its detail screen to fill in the rest
-    if (firstNewHerbId) openHerb(firstNewHerbId);
   };
 
   const handleClose = (open: boolean) => {
@@ -351,13 +336,27 @@ export function AddHerbDialog() {
     if (!open) {
       setSearch('');
       setStaged([]);
-      setStatus(DEFAULT_STATUS[location]);
-      setQuantity(1);
+      resetPicks(location);
       setMode('add');
     }
   };
 
-  const statusOptions = STATUS_OPTIONS[location];
+  const handleConfirm = async () => {
+    if (staged.length === 0) return;
+    setIsProcessing(true);
+    let newHerbId: string | undefined;
+    try {
+      if (isRemove) await handleRemoveConfirm();
+      else newHerbId = await handleAddConfirm();
+    } finally {
+      setIsProcessing(false);
+      handleClose(false);
+    }
+    // New herb created: go straight to its detail screen to fill in the rest
+    if (newHerbId) openHerb(newHerbId);
+  };
+
+  const statusOptions = STATUS_OPTIONS[location] ?? [];
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -371,7 +370,7 @@ export function AddHerbDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Leaf className="h-5 w-5 text-primary" />
-            {isRemove ? (location === 'tincture' ? 'Press Herbs' : 'Remove Herbs from Inventory') : 'Add Herb to Inventory'}
+            {isRemove ? (isTincture ? 'Press Herbs' : 'Remove Herbs from Inventory') : 'Add Herb to Inventory'}
           </DialogTitle>
         </DialogHeader>
 
@@ -381,7 +380,7 @@ export function AddHerbDialog() {
             <Button
               type="button"
               variant={isRemove ? 'outline' : 'default'}
-              onClick={() => { setMode('add'); setStaged([]); setSearch(''); }}
+              onClick={() => changeMode('add')}
               disabled={isProcessing}
             >
               Add
@@ -389,10 +388,10 @@ export function AddHerbDialog() {
             <Button
               type="button"
               variant={isRemove ? 'default' : 'outline'}
-              onClick={() => { setMode('remove'); setStaged([]); setSearch(''); }}
+              onClick={() => changeMode('remove')}
               disabled={isProcessing}
             >
-              {location === 'tincture' ? 'Pressed' : 'Remove'}
+              {isTincture ? 'Pressed' : 'Remove'}
             </Button>
           </div>
 
@@ -404,12 +403,9 @@ export function AddHerbDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-background z-50">
-                <SelectItem value="clinic">Clinic</SelectItem>
-                <SelectItem value="backstock">Backstock</SelectItem>
-                <SelectItem value="tincture">Tincture</SelectItem>
-                <SelectItem value="bulk">Bulk</SelectItem>
-                <SelectItem value="bulk_backstock">Bulk Backstock</SelectItem>
-                <SelectItem value="bulk_clinic">Clinic Bulk</SelectItem>
+                {LOCATIONS.map(l => (
+                  <SelectItem key={l} value={l}>{LOCATION_LABELS[l]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -429,10 +425,10 @@ export function AddHerbDialog() {
                 </SelectContent>
               </Select>
             </div>
-          ) : location !== 'tincture' && (
+          ) : !isTincture && (
             <div className="space-y-2">
               <Label>{location === 'backstock' ? 'Size' : 'Status'}</Label>
-              <Select value={status} onValueChange={setStatus}>
+              <Select value={statusOrSize} onValueChange={setStatusOrSize}>
                 <SelectTrigger className="bg-background">
                   <SelectValue placeholder={location === 'backstock' ? 'Untagged' : 'Select status'} />
                 </SelectTrigger>
@@ -464,25 +460,23 @@ export function AddHerbDialog() {
 
             {search.trim().length > 0 && (
               <div className="border rounded-md max-h-48 overflow-y-auto">
-                {filteredHerbs.length > 0 ? (
-                  filteredHerbs.slice(0, 20).map(herb => (
-                    <button
-                      key={herb.id}
-                      type="button"
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
-                      onClick={() => stageHerb(herb.name, false)}
-                      disabled={isProcessing}
-                    >
-                      <span className="font-medium">{herb.name}</span>
-                      {herb.common_name && (
-                        <span className="text-muted-foreground ml-1">({herb.common_name})</span>
-                      )}
-                      {herb.latin_name && (
-                        <span className="text-muted-foreground text-xs block">{herb.latin_name}</span>
-                      )}
-                    </button>
-                  ))
-                ) : null}
+                {filteredHerbs.slice(0, 20).map(herb => (
+                  <button
+                    key={herb.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                    onClick={() => stageHerb(herb.name, false, herb.id)}
+                    disabled={isProcessing}
+                  >
+                    <span className="font-medium">{herb.name}</span>
+                    {herb.common_name && (
+                      <span className="text-muted-foreground ml-1">({herb.common_name})</span>
+                    )}
+                    {herb.latin_name && (
+                      <span className="text-muted-foreground text-xs block">{herb.latin_name}</span>
+                    )}
+                  </button>
+                ))}
                 {isNewHerb && (
                   <button
                     type="button"
@@ -498,7 +492,7 @@ export function AddHerbDialog() {
             )}
 
             {search.trim().length === 0 && staged.length === 0 && (
-              <p className="text-xs text-muted-foreground">{isRemove ? `Start typing to search herbs in ${LOCATION_LABELS[location]}` : 'Start typing to search your herb list'}</p>
+              <p className="text-xs text-muted-foreground">{isRemove ? `Start typing to search herbs in ${locationLabel}` : 'Start typing to search your herb list'}</p>
             )}
           </div>
 
@@ -537,8 +531,8 @@ export function AddHerbDialog() {
               : staged.length === 0
               ? 'Select herbs above'
               : isRemove
-              ? `${removeVerb} ${staged.length} herb${staged.length > 1 ? 's' : ''}${location === 'tincture' ? '' : ` from ${LOCATION_LABELS[location]}`}`
-              : `Add ${staged.length} herb${staged.length > 1 ? 's' : ''} to ${LOCATION_LABELS[location]}`}
+              ? `${isTincture ? 'Press' : 'Remove'} ${plural(staged.length, 'herb')}${isTincture ? '' : ` from ${locationLabel}`}`
+              : `Add ${plural(staged.length, 'herb')} to ${locationLabel}`}
           </Button>
         </div>
       </DialogContent>

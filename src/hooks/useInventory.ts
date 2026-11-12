@@ -274,6 +274,54 @@ export function useDeleteInventory() {
   });
 }
 
+// Re-create a previously deleted inventory row (used by Undo). Resolves to the
+// new row's id — it can't reuse the old one.
+export function useRestoreInventory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (row: {
+      herb_id: string;
+      location: InventoryLocation;
+      status: InventoryStatus;
+      notes: string | null;
+      quantity?: number;
+      tincture_started_at: string | null;
+      tincture_ready_at: string | null;
+      current_batch_id: string | null;
+    }): Promise<string> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { data, error } = await supabase
+        .from('inventory')
+        .insert({ ...row, user_id: user.id })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return data.id as string;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
+// Delete a herb (used to clean up a herb that was just created when the
+// follow-up inventory step failed)
+export function useDeleteHerb() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('herbs').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['herbs'] });
+    },
+  });
+}
+
 // Batch upsert for bulk stock count mode
 export function useBulkUpsert() {
   const queryClient = useQueryClient();

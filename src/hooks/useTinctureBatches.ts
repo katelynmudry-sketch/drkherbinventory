@@ -260,6 +260,100 @@ export function usePressBatch() {
   });
 }
 
+// Everything pressing a batch changes, captured so it can be reversed.
+export interface PressSnapshot {
+  batchId: string;
+  archivedBatchIds: string[];
+  priorTags: { id: string; current_batch_id: string | null }[];
+}
+
+// Reverse a press: batch back to macerating, any batch the press archived
+// active again, clinic/backstock batch tags restored. Idempotent, so a failed
+// attempt can simply be retried.
+export async function reversePress(s: PressSnapshot): Promise<void> {
+  const { error } = await supabase
+    .from('tincture_batches')
+    .update({ status: 'macerating', pressed_date: null })
+    .eq('id', s.batchId);
+  if (error) throw error;
+  if (s.archivedBatchIds.length > 0) {
+    const { error: archErr } = await supabase
+      .from('tincture_batches')
+      .update({ status: 'active' })
+      .in('id', s.archivedBatchIds);
+    if (archErr) throw archErr;
+  }
+  for (const t of s.priorTags) {
+    const { error: tagErr } = await supabase
+      .from('inventory')
+      .update({ current_batch_id: t.current_batch_id })
+      .eq('id', t.id);
+    if (tagErr) throw tagErr;
+  }
+}
+
+// "Pressed" for a tincture jar row: press its macerating batch and remove the
+// jar row. Atomic from the caller's view — if removing the row fails, the press
+// is rolled back. Resolves to a snapshot for Undo (null if there was no batch).
+export function usePressTinctureHerb() {
+  const queryClient = useQueryClient();
+  const pressBatch = usePressBatch();
+
+  return useMutation({
+    mutationFn: async (row: { id: string; herb_id: string; current_batch_id: string | null }): Promise<PressSnapshot | null> => {
+      const { data: batches, error: batchErr } = await supabase
+        .from('tincture_batches')
+        .select('id')
+        .eq('herb_id', row.herb_id)
+        .eq('status', 'macerating')
+        .order('batch_date', { ascending: false })
+        .limit(1);
+      if (batchErr) throw batchErr;
+      const batchId = batches?.[0]?.id ?? row.current_batch_id ?? null;
+
+      let snapshot: PressSnapshot | null = null;
+      if (batchId) {
+        // Read everything pressing will change BEFORE changing it
+        const { data: activeBefore, error: beforeErr } = await supabase
+          .from('tincture_batches').select('id')
+          .eq('herb_id', row.herb_id).eq('status', 'active');
+        if (beforeErr) throw beforeErr;
+        const { data: tagRows, error: tagErr } = await supabase
+          .from('inventory').select('id, current_batch_id')
+          .eq('herb_id', row.herb_id).in('location', ['backstock', 'clinic']);
+        if (tagErr) throw tagErr;
+
+        await pressBatch.mutateAsync(batchId);
+
+        const { data: activeAfter, error: afterErr } = await supabase
+          .from('tincture_batches').select('id')
+          .eq('herb_id', row.herb_id).eq('status', 'active');
+        const afterIds = new Set((activeAfter ?? []).map(b => b.id));
+        snapshot = {
+          batchId,
+          archivedBatchIds: (activeBefore ?? []).map(b => b.id).filter(id => !afterIds.has(id)),
+          priorTags: tagRows ?? [],
+        };
+        if (afterErr) {
+          await reversePress(snapshot).catch(() => {});
+          throw afterErr;
+        }
+      }
+
+      const { error: delErr } = await supabase.from('inventory').delete().eq('id', row.id);
+      if (delErr) {
+        if (snapshot) await reversePress(snapshot).catch(() => {});
+        throw delErr;
+      }
+      return snapshot;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
 // Update a batch's editable fields (bottle count, dates, notes) — used by the
 // manual bottle-count stepper and to decrement bottle_count when bottles are
 // pressed into Clinic/Backstock.

@@ -15,9 +15,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { reversePress } from '@/hooks/useTinctureBatches';
 import { useActivityLog, ActivityEntry } from '@/contexts/ActivityLogContext';
-import { useAddInventory, useDeleteInventory, useUpdateInventory } from '@/hooks/useInventory';
-import { supabase } from '@/integrations/supabase/client';
+import { useDeleteInventory, useUpdateInventory, useRestoreInventory } from '@/hooks/useInventory';
+import { LOCATION_LABELS, errorCode, errorMessage } from '@/lib/inventoryLabels';
 
 function formatTimeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -33,18 +34,15 @@ function entryLabel(entry: ActivityEntry): string {
   const a = entry.action;
   switch (a.type) {
     case 'add':
-      return `Added ${a.herbName} to ${a.location} as ${a.status}`;
+      return `Added ${a.herbName} to ${LOCATION_LABELS[a.location]} as ${a.status}`;
     case 'remove':
-      return `Removed ${a.herbName} from ${a.location}`;
+      return `${a.pressed ? 'Pressed' : 'Removed'} ${a.herbName} ${a.pressed ? '' : `from ${LOCATION_LABELS[a.location]}`}`.trim();
     case 'status_change':
       if (a.prevStatus === a.newStatus) {
-        return a.prevTinctureStartedAt !== undefined
-          ? `${a.herbName} in ${a.location}: restarted`
-          : a.prevNotes !== undefined
-          ? `${a.herbName} in ${a.location}: size changed`
-          : `${a.herbName} in ${a.location}: quantity changed`;
+        const what = a.change === 'restart' ? 'restarted' : a.change === 'size' ? 'size changed' : 'quantity changed';
+        return `${a.herbName} in ${LOCATION_LABELS[a.location]}: ${what}`;
       }
-      return `${a.herbName} in ${a.location}: ${a.prevStatus} → ${a.newStatus}`;
+      return `${a.herbName} in ${LOCATION_LABELS[a.location]}: ${a.prevStatus} → ${a.newStatus}`;
   }
 }
 
@@ -52,13 +50,13 @@ function undoDescription(entry: ActivityEntry): string {
   const a = entry.action;
   switch (a.type) {
     case 'add':
-      return `Remove ${a.herbName} from ${a.location} (undo the add)?`;
+      return `Remove ${a.herbName} from ${LOCATION_LABELS[a.location]} (undo the add)?`;
     case 'remove':
-      return `Re-add ${a.herbName} to ${a.location} as ${a.status}?`;
+      return `Re-add ${a.herbName} to ${LOCATION_LABELS[a.location]} as ${a.status}?`;
     case 'status_change':
       return a.prevStatus === a.newStatus
-        ? `Restore ${a.herbName} in ${a.location} to how it was before?`
-        : `Change ${a.herbName} in ${a.location} back to ${a.prevStatus}?`;
+        ? `Restore ${a.herbName} in ${LOCATION_LABELS[a.location]} to how it was before?`
+        : `Change ${a.herbName} in ${LOCATION_LABELS[a.location]} back to ${a.prevStatus}?`;
   }
 }
 
@@ -71,13 +69,13 @@ function actionIcon(entry: ActivityEntry): string {
 }
 
 export function ActivityLogButton() {
-  const { entries, removeEntry, clearAll } = useActivityLog();
+  const { entries, removeEntry, removeEntriesForInventory, repointInventoryId, clearAll } = useActivityLog();
   const [open, setOpen] = useState(false);
   const [pendingUndo, setPendingUndo] = useState<ActivityEntry | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
 
   const queryClient = useQueryClient();
-  const addInventory = useAddInventory();
+  const restoreInventory = useRestoreInventory();
   const deleteInventory = useDeleteInventory();
   const updateInventory = useUpdateInventory();
 
@@ -88,11 +86,13 @@ export function ActivityLogButton() {
     try {
       if (a.type === 'add') {
         await deleteInventory.mutateAsync(a.inventoryId);
-        toast.success(`Removed ${a.herbName} from ${a.location}`);
+        // The row is gone, so any other log entries about it can't be undone
+        removeEntriesForInventory(a.inventoryId);
+        toast.success(`Removed ${a.herbName} from ${LOCATION_LABELS[a.location]}`);
       } else if (a.type === 'remove') {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-        const { error } = await supabase.from('inventory').insert({
+        // Reverse the press first (idempotent) so a failed attempt can be retried
+        if (a.pressed) await reversePress(a.pressed);
+        const restoredId = await restoreInventory.mutateAsync({
           herb_id: a.herb_id,
           location: a.location,
           status: a.status,
@@ -101,28 +101,11 @@ export function ActivityLogButton() {
           tincture_ready_at: a.tincture_ready_at,
           current_batch_id: a.current_batch_id,
           ...(a.quantity !== undefined ? { quantity: a.quantity } : {}),
-          user_id: user.id,
         });
-        if (error) throw error;
-        if (a.pressed) {
-          // Reverse the press: batch goes back to macerating, any batch the
-          // press archived becomes active again, and clinic/backstock tags revert.
-          const { batchId, archivedBatchIds, priorTags } = a.pressed;
-          const { error: batchErr } = await supabase
-            .from('tincture_batches')
-            .update({ status: 'macerating', pressed_date: null })
-            .eq('id', batchId);
-          if (batchErr) throw batchErr;
-          if (archivedBatchIds.length > 0) {
-            await supabase.from('tincture_batches').update({ status: 'active' }).in('id', archivedBatchIds);
-          }
-          for (const t of priorTags) {
-            await supabase.from('inventory').update({ current_batch_id: t.current_batch_id }).eq('id', t.id);
-          }
-          queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
-        }
-        queryClient.invalidateQueries({ queryKey: ['inventory'] });
-        toast.success(`Re-added ${a.herbName} to ${a.location}`);
+        // The row has a new id now; keep older entries about it undoable
+        if (a.inventoryId) repointInventoryId(a.inventoryId, restoredId);
+        if (a.pressed) queryClient.invalidateQueries({ queryKey: ['tincture_batches'] });
+        toast.success(`Re-added ${a.herbName} to ${LOCATION_LABELS[a.location]}`);
       } else if (a.type === 'status_change') {
         await updateInventory.mutateAsync({
           id: a.inventoryId,
@@ -135,8 +118,10 @@ export function ActivityLogButton() {
         toast.success(`Reverted ${a.herbName} to ${a.prevStatus}`);
       }
       removeEntry(pendingUndo.id);
-    } catch (err: any) {
-      toast.error(err?.message || 'Undo failed');
+    } catch (err: unknown) {
+      toast.error(errorCode(err) === 'PGRST116'
+        ? 'That item has changed or been removed since, so this can no longer be undone'
+        : errorMessage(err) || 'Undo failed');
     } finally {
       setIsUndoing(false);
       setPendingUndo(null);
@@ -154,7 +139,7 @@ export function ActivityLogButton() {
         <History className="h-5 w-5 text-muted-foreground" />
         {entries.length > 0 && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            {entries.length > 99 ? '99' : entries.length}
+            {entries.length > 99 ? '99+' : entries.length}
           </span>
         )}
       </button>
@@ -163,7 +148,7 @@ export function ActivityLogButton() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="bottom" className="max-h-[70vh] flex flex-col">
           <SheetHeader className="shrink-0 flex flex-row items-center justify-between pb-2">
-            <SheetTitle className="text-base">Session Log</SheetTitle>
+            <SheetTitle className="text-base">Recent Activity</SheetTitle>
             {entries.length > 0 && (
               <Button
                 variant="ghost"
@@ -179,7 +164,7 @@ export function ActivityLogButton() {
 
           <div className="overflow-y-auto flex-1 -mx-6 px-6">
             {entries.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No activity yet this session.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No recent activity.</p>
             ) : (
               <div className="divide-y">
                 {entries.map(entry => (
