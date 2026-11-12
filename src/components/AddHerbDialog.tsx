@@ -419,6 +419,7 @@ export function AddHerbDialog() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-50">
+                  <SelectItem value="0">Out (0 lb)</SelectItem>
                   {LB_OPTIONS.map(lb => (
                     <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
                   ))}

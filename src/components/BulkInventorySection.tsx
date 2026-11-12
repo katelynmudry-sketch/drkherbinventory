@@ -591,6 +591,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="0">Out (0 lb)</SelectItem>
                       {LB_OPTIONS.map(lb => (
                         <SelectItem key={lb} value={String(lb)}>
                           {formatLbs(lb)} lb
@@ -619,6 +620,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE_VALUE}>None</SelectItem>
+                      <SelectItem value="0">Out (0 lb)</SelectItem>
                       {LB_OPTIONS.map(lb => (
                         <SelectItem key={lb} value={String(lb)}>
                           {formatLbs(lb)} lb
@@ -647,6 +649,7 @@ export function BulkInventorySection({ showBatchInfo = false }: BulkInventorySec
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE_VALUE}>None</SelectItem>
+                      <SelectItem value="0">Out (0 lb)</SelectItem>
                       {LB_OPTIONS.map(lb => (
                         <SelectItem key={lb} value={String(lb)}>
                           {formatLbs(lb)} lb
@@ -1271,7 +1274,7 @@ function BulkStockCountView({
         const herb = herbByName.get(name.toLowerCase());
         const existing = herb ? backstockById.get(herb.id) : undefined;
         if (existing) {
-          next.set(name, Number(existing.quantity ?? 0) || null);
+          next.set(name, Number(existing.quantity ?? 0));
         } else if (!next.has(name)) {
           next.set(name, null);
         }
@@ -1289,7 +1292,7 @@ function BulkStockCountView({
         const herb = herbByName.get(name.toLowerCase());
         const existing = herb ? clinicBulkById.get(herb.id) : undefined;
         if (existing) {
-          next.set(name, Number(existing.quantity ?? 0) || null);
+          next.set(name, Number(existing.quantity ?? 0));
         } else if (!next.has(name)) {
           next.set(name, null);
         }
@@ -1350,7 +1353,19 @@ function BulkStockCountView({
     const dbQty = existing != null ? Number(existing.quantity ?? 0) : null;
     const dbVal: number | 'out' | null = dbQty === null ? null : dbQty === 0 ? 'out' : dbQty;
     return sel !== dbVal;
-  }).length;
+  }).length
+    + Array.from(backstockSelections.entries()).filter(([name, qty]) => {
+      if (qty === null) return false;
+      const herb = herbByName.get(name.toLowerCase());
+      const existing = herb ? backstockById.get(herb.id) : undefined;
+      return qty !== (existing?.quantity != null ? Number(existing.quantity) : null);
+    }).length
+    + Array.from(clinicBulkSelections.entries()).filter(([name, qty]) => {
+      if (qty === null) return false;
+      const herb = herbByName.get(name.toLowerCase());
+      const existing = herb ? clinicBulkById.get(herb.id) : undefined;
+      return qty !== (existing?.quantity != null ? Number(existing.quantity) : null);
+    }).length;
 
   const filteredHerbs = useMemo(() => {
     if (!search.trim()) return allHerbNames;
@@ -1556,6 +1571,17 @@ function BulkStockCountView({
                     {opt}
                   </button>
                 ))}
+                <button
+                  onClick={() => toggleBackstock(herbName, 0)}
+                  className={cn(
+                    'rounded px-2 py-1 text-xs font-medium border transition-colors',
+                    bsSel === 0
+                      ? 'bg-destructive text-destructive-foreground border-destructive'
+                      : 'bg-background text-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  OUT
+                </button>
                 {bsSel !== null && (
                   <button
                     onClick={() => toggleBackstock(herbName, bsSel as number)}
@@ -1582,6 +1608,17 @@ function BulkStockCountView({
                     {opt}
                   </button>
                 ))}
+                <button
+                  onClick={() => toggleClinicBulk(herbName, 0)}
+                  className={cn(
+                    'rounded px-2 py-1 text-xs font-medium border transition-colors',
+                    cbSel === 0
+                      ? 'bg-destructive text-destructive-foreground border-destructive'
+                      : 'bg-background text-foreground border-border hover:bg-muted'
+                  )}
+                >
+                  OUT
+                </button>
                 {cbSel !== null && (
                   <button
                     onClick={() => toggleClinicBulk(herbName, cbSel as number)}
@@ -1975,6 +2012,7 @@ function ClinicBulkView({
                 <Select value={String(selectedQuantity)} onValueChange={(v) => setSelectedQuantity(Number(v))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0">Out (0 lb)</SelectItem>
                     {LB_OPTIONS.map(lb => (
                       <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
                     ))}
