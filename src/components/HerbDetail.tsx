@@ -333,11 +333,11 @@ function HerbDetailDialog({ herbId, onClose }: { herbId: string | null; onClose:
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {[...new Set([...LB_OPTIONS, form.low_threshold_lb])]
-                      .filter((lb) => lb > 0)
+                    {[...new Set([0, ...LB_OPTIONS, form.low_threshold_lb])]
+                      .filter((lb) => lb >= 0)
                       .sort((a, b) => a - b)
                       .map((lb) => (
-                        <SelectItem key={lb} value={String(lb)}>{formatLbs(lb)} lb</SelectItem>
+                        <SelectItem key={lb} value={String(lb)}>{lb === 0 ? '0 lb (only when out)' : `${formatLbs(lb)} lb`}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>

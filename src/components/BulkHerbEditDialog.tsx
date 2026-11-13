@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/dialog';
 import { useBulkUpdateHerbs, getDisplayName, type Herb } from '@/hooks/useInventory';
 
-const THRESHOLD_CHOICES = [0.25, 0.5, 0.75, 1, 1.5, 2];
+// 0 = no "low" band: the herb only triggers a reorder once it is fully out
+const THRESHOLD_CHOICES = [0, 0.25, 0.5, 0.75, 1, 1.5, 2];
 
 type Filter = 'all' | 'harvest';
 
@@ -147,7 +148,7 @@ export function BulkHerbEditDialog({ herbs }: { herbs: Herb[] }) {
             onChange={e => setThreshold(Number(e.target.value))}
           >
             {THRESHOLD_CHOICES.map(v => (
-              <option key={v} value={v}>{v} lb</option>
+              <option key={v} value={v}>{v === 0 ? '0 lb (only when out)' : `${v} lb`}</option>
             ))}
           </select>
           <Button

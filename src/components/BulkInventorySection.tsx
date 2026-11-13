@@ -52,7 +52,7 @@ import { HerbNameButton, useHerbDetail } from '@/components/HerbDetail';
 // Compact subset shown as tap buttons in stock count mode
 const STOCK_COUNT_OPTIONS = [0.25, 0.5, 1, 1.25, 1.5, 2, 3];
 // Available per-herb low threshold options
-const THRESHOLD_OPTIONS = [0.25, 0.5] as const;
+const THRESHOLD_OPTIONS = [0, 0.25, 0.5] as const;
 const NONE_VALUE = '__none__';
 
 interface BulkInventorySectionProps {
@@ -1030,7 +1030,7 @@ function BulkItemCard({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {THRESHOLD_OPTIONS.map(t => (
-                    <SelectItem key={t} value={String(t)}>{formatLbs(t)} lb</SelectItem>
+                    <SelectItem key={t} value={String(t)}>{t === 0 ? '0 lb (only when out)' : `${formatLbs(t)} lb`}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

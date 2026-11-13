@@ -96,7 +96,7 @@ function ThresholdCell({ value, onChange }: { value: number; onChange: (v: numbe
 
   const commit = () => {
     const n = parseFloat(local);
-    if (!isNaN(n) && n > 0) onChange(n);
+    if (!isNaN(n) && n >= 0) onChange(n);
     else setLocal(String(value));
     setEditing(false);
   };
@@ -105,7 +105,7 @@ function ThresholdCell({ value, onChange }: { value: number; onChange: (v: numbe
     return (
       <Input
         type="number"
-        min="0.25"
+        min="0"
         step="0.25"
         value={local}
         onChange={e => setLocal(e.target.value)}
