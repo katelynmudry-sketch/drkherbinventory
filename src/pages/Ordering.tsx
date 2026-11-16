@@ -592,6 +592,7 @@ const Ordering = () => {
                           <span className="block text-xs font-normal opacity-70">low_threshold_lb</span>
                         </th>
                         <th className="px-3 pb-2 font-medium">Reorder qty</th>
+                        <th className="px-3 pb-2 font-medium">Ordered</th>
                         {suppliers.map(s => (
                           <th key={s.id} className="px-3 pb-2 font-medium text-right">
                             <span className="flex items-center justify-end gap-1.5">
@@ -666,6 +667,30 @@ const Ordering = () => {
                                 }}
                               />
                             </td>
+                            <td className="px-3 py-2">
+                              <Button
+                                size="sm"
+                                variant={isOrdered ? 'default' : 'outline'}
+                                className={`h-6 px-2 text-xs ${
+                                  isOrdered
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'border-blue-300 text-blue-700 hover:bg-blue-50'
+                                }`}
+                                title={isOrdered ? 'Already marked as ordered' : 'Mark as ordered'}
+                                disabled={markAsOrdered.isPending || isOrdered}
+                                onClick={async () => {
+                                  if (isOrdered) return;
+                                  try {
+                                    await markAsOrdered.mutateAsync([item.id]);
+                                    toast.success(`${herbName} marked as ordered`);
+                                  } catch (e) {
+                                    toast.error(e instanceof Error ? e.message : 'Failed');
+                                  }
+                                }}
+                              >
+                                Ordered
+                              </Button>
+                            </td>
                             {suppliers.map(s => {
                               const p = herbPricing?.get(s.id);
                               const isMin = p && minPrice !== null && p.price_per_lb === minPrice;
@@ -688,28 +713,6 @@ const Ordering = () => {
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-1">
                                 <Button
-                                  size="sm"
-                                  variant={isOrdered ? 'default' : 'outline'}
-                                  className={`h-6 px-2 text-xs ${
-                                    isOrdered
-                                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                      : 'border-blue-300 text-blue-700 hover:bg-blue-50'
-                                  }`}
-                                  title={isOrdered ? 'Already marked as ordered' : 'Mark as ordered'}
-                                  disabled={markAsOrdered.isPending || isOrdered}
-                                  onClick={async () => {
-                                    if (isOrdered) return;
-                                    try {
-                                      await markAsOrdered.mutateAsync([item.id]);
-                                      toast.success(`${herbName} marked as ordered`);
-                                    } catch (e) {
-                                      toast.error(e instanceof Error ? e.message : 'Failed');
-                                    }
-                                  }}
-                                >
-                                  {isOrdered ? 'Ordered' : 'Ordered'}
-                                </Button>
-                                <Button
                                   size="icon"
                                   variant="ghost"
                                   className="h-6 w-6 text-muted-foreground hover:text-destructive"
@@ -726,7 +729,7 @@ const Ordering = () => {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border bg-muted/30 font-semibold">
-                        <td colSpan={4} className="px-3 py-2 text-right text-sm">Column Total</td>
+                        <td colSpan={5} className="px-3 py-2 text-right text-sm">Column Total</td>
                         {suppliers.map(s => {
                           const total = orderItems.reduce((sum, item) => {
                             const herbName = item.herbs?.name ?? '';
